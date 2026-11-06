@@ -1,0 +1,112 @@
+name: Release
+
+# Tag-driven release. Pushing a `v*` tag builds the supported Linux bundles
+# (x64 + arm64, `.deb` + AppImage) and publishes them to that tag's GitHub
+# release. The matrix is serialized on purpose: the first job creates the
+# release, the second attaches its assets to the same release. Running them
+# in parallel would race two release-creation requests for one tag.
+#
+# Windows and macOS are deliberately absent: the app is Linux-only today
+# (`pkexec`, apt/polkit, std::os::unix). Do not add them before the port
+# exists (see AGENTS.md and ROADMAP.md).
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Linux ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            label: x64
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            label: arm64
+            target: aarch64-unknown-linux-gnu
+    steps:
+      - name: Checkout the tagged commit
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Install Tauri's Linux build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            curl \
+            wget \
+            file \
+            patchelf \
+            libfuse2t64 \
+            libssl-dev \
+            libxdo-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Install pnpm (version from packageManager)
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node (latest LTS)
+        uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust build artifacts
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Check the tag matches the app version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          app="$(jq -r .version src-tauri/tauri.conf.json)"
+          pkg="$(jq -r .version package.json)"
+          if [ "$tag" != "$app" ] || [ "$tag" != "$pkg" ]; then
+            echo "::error::Tag v$tag does not match tauri.conf.json ($app) and package.json ($pkg). Bump both versions before tagging."
+            exit 1
+          fi
+          echo "Tag v$tag matches the app version - OK."
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build bundles and publish the release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: DevSetup ${{ github.ref_name }}
+          releaseBody: |
+            DevSetup ${{ github.ref_name }} for Linux.
+
+            **Downloads**
+            - `*.deb` - recommended on Debian/Ubuntu (installs `/usr/bin/devsetup` and the polkit policy)
+            - `*.AppImage` - portable build; user-level tools work, system-package steps need the `.deb`
+
+            **Platforms:** Linux x64 and Linux arm64.
+
+            Verify the file matches your architecture before installing. Full
+            install and usage notes live in the [README](https://github.com/${{ github.repository }}#readme).
+          releaseDraft: false
+          prerelease: false
+          args: --target ${{ matrix.target }} --bundles deb,appimage

@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="800" viewBox="0 0 2400 800" role="img" aria-label="DevSetup hero banner with a terminal plan and setup cards">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#070d14"/>
+      <stop offset="0.55" stop-color="#0b1a20"/>
+      <stop offset="1" stop-color="#06131a"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2dd4bf" stop-opacity="0"/>
+      <stop offset="0.45" stop-color="#2dd4bf" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="mint" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="mintBar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="0.7" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#12242e" stop-opacity="0.96"/>
+      <stop offset="1" stop-color="#0b1720" stop-opacity="0.96"/>
+    </linearGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M 48 0 L 0 0 0 48" fill="none" stroke="#5eead4" stroke-opacity="0.055" stroke-width="1"/>
+    </pattern>
+    <pattern id="dots" width="26" height="26" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.3" fill="#5eead4" fill-opacity="0.12"/>
+    </pattern>
+    <radialGradient id="glowTeal" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#2dd4bf" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowCyan" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="24" stdDeviation="30" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <rect width="2400" height="800" fill="url(#bg)"/>
+  <rect width="2400" height="800" fill="url(#grid)"/>
+  <rect x="0" y="560" width="2400" height="240" fill="url(#dots)" opacity="0.5"/>
+
+  <ellipse cx="420" cy="120" rx="620" ry="420" fill="url(#glowTeal)"/>
+  <ellipse cx="2080" cy="720" rx="640" ry="430" fill="url(#glowCyan)"/>
+  <path d="M -100 700 L 900 60 L 1180 60 L 180 700 Z" fill="url(#beam)" opacity="0.12"/>
+  <path d="M 1180 820 L 2200 120 L 2340 120 L 1320 820 Z" fill="url(#beam)" opacity="0.07"/>
+
+  <!-- terminal -->
+  <g filter="url(#shadow)">
+    <rect x="130" y="150" width="1050" height="500" rx="30" fill="url(#glass)" stroke="#2dd4bf" stroke-opacity="0.32" stroke-width="2"/>
+    <path d="M 130 210 A 30 30 0 0 1 160 180 L 1150 180 A 30 30 0 0 1 1180 210 L 1180 242 L 130 242 Z" fill="#0d2029"/>
+    <line x1="130" y1="242" x2="1180" y2="242" stroke="#2dd4bf" stroke-opacity="0.18" stroke-width="2"/>
+    <circle cx="178" cy="211" r="8" fill="#f87171" fill-opacity="0.8"/>
+    <circle cx="206" cy="211" r="8" fill="#fbbf24" fill-opacity="0.8"/>
+    <circle cx="234" cy="211" r="8" fill="#34d399" fill-opacity="0.8"/>
+    <text x="286" y="220" font-family="'DejaVu Sans Mono', 'SFMono-Regular', Consolas, monospace" font-size="22" fill="#7dd3fc" letter-spacing="1">devsetup · role: web</text>
+    <text x="1120" y="220" text-anchor="end" font-family="'DejaVu Sans Mono', monospace" font-size="19" fill="#5eead4" opacity="0.7">REVIEW</text>
+
+    <text x="196" y="318" font-family="'DejaVu Sans Mono', monospace" font-size="28" fill="#5eead4">$</text>
+    <text x="232" y="318" font-family="'DejaVu Sans Mono', monospace" font-size="28" fill="#e2e8f0">devsetup plan --role web</text>
+
+    <g font-family="'DejaVu Sans Mono', monospace" font-size="25">
+      <text x="196" y="382" fill="#34d399">✓</text>
+      <text x="238" y="382" fill="#cbd5e1">git</text>
+      <text x="430" y="382" fill="#64748b">2.51.0</text>
+      <text x="196" y="428" fill="#34d399">✓</text>
+      <text x="238" y="428" fill="#cbd5e1">node</text>
+      <text x="430" y="428" fill="#64748b">24.20.0</text>
+      <text x="196" y="474" fill="#34d399">✓</text>
+      <text x="238" y="474" fill="#cbd5e1">pnpm</text>
+      <text x="430" y="474" fill="#64748b">12.18.0</text>
+      <text x="196" y="520" fill="#34d399">✓</text>
+      <text x="238" y="520" fill="#cbd5e1">docker</text>
+      <text x="430" y="520" fill="#64748b">28.5.1</text>
+    </g>
+
+    <g font-family="'DejaVu Sans', sans-serif" font-size="22">
+      <text x="660" y="382" fill="#5eead4">installer</text>
+      <text x="660" y="428" fill="#5eead4">runtime</text>
+      <text x="660" y="474" fill="#5eead4">js</text>
+      <text x="660" y="520" fill="#5eead4">containers</text>
+    </g>
+
+    <rect x="196" y="566" width="884" height="10" rx="5" fill="#1e293b"/>
+    <rect x="196" y="566" width="690" height="10" rx="5" fill="url(#mintBar)"/>
+    <text x="196" y="612" font-family="'DejaVu Sans', sans-serif" font-size="23" fill="#94a3b8">24 tools ready · 1 password prompt · 0 hidden steps</text>
+    <text x="1080" y="612" text-anchor="end" font-family="'DejaVu Sans Mono', monospace" font-size="23" fill="#5eead4">78%</text>
+  </g>
+
+  <!-- logo badge -->
+  <g>
+    <ellipse cx="1860" cy="385" rx="255" ry="255" fill="url(#glowCyan)" opacity="0.55"/>
+    <circle cx="1860" cy="385" r="226" fill="none" stroke="#2dd4bf" stroke-opacity="0.22" stroke-width="2"/>
+    <circle cx="1860" cy="385" r="182" fill="none" stroke="#22d3ee" stroke-opacity="0.16" stroke-width="2" stroke-dasharray="4 14"/>
+    <rect x="1720" y="245" width="280" height="280" rx="70" fill="url(#mint)"/>
+    <rect x="1720" y="245" width="280" height="280" rx="70" fill="none" stroke="#a7f3d0" stroke-opacity="0.4" stroke-width="2"/>
+    <path d="M 1786 324 L 1926 385 L 1786 446" fill="none" stroke="#062028" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="1920" y="424" width="58" height="22" rx="11" fill="#062028"/>
+  </g>
+
+  <!-- floating cards -->
+  <g transform="rotate(-5 1470 215)" filter="url(#shadow)">
+    <rect x="1288" y="150" width="368" height="130" rx="26" fill="#0f2029" stroke="#5eead4" stroke-opacity="0.28" stroke-width="2"/>
+    <circle cx="1346" cy="215" r="30" fill="#134e4a"/>
+    <path d="M 1332 215 L 1343 226 L 1361 204" fill="none" stroke="#5eead4" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="1392" y="208" font-family="'DejaVu Sans', sans-serif" font-size="27" font-weight="700" fill="#e2e8f0">Review every</text>
+    <text x="1392" y="242" font-family="'DejaVu Sans', sans-serif" font-size="27" font-weight="700" fill="#e2e8f0">command</text>
+  </g>
+
+  <g transform="rotate(4 1680 610)" filter="url(#shadow)">
+    <rect x="1490" y="542" width="380" height="136" rx="26" fill="#0f2029" stroke="#5eead4" stroke-opacity="0.28" stroke-width="2"/>
+    <circle cx="1548" cy="610" r="30" fill="#0e3b43"/>
+    <path d="M 1536 610 L 1550 610 M 1550 610 L 1550 596 A 8 8 0 0 1 1566 596 L 1566 610 M 1542 610 L 1542 624 A 8 8 0 0 0 1558 624 L 1558 610" fill="none" stroke="#22d3ee" stroke-width="5" stroke-linecap="round"/>
+    <text x="1594" y="600" font-family="'DejaVu Sans', sans-serif" font-size="27" font-weight="700" fill="#e2e8f0">One password</text>
+    <text x="1594" y="636" font-family="'DejaVu Sans', sans-serif" font-size="27" font-weight="700" fill="#e2e8f0">prompt</text>
+  </g>
+
+  <g transform="rotate(-3 2200 455)" filter="url(#shadow)">
+    <rect x="2050" y="396" width="300" height="118" rx="24" fill="#0f2029" stroke="#5eead4" stroke-opacity="0.28" stroke-width="2"/>
+    <circle cx="2102" cy="455" r="26" fill="#134e4a"/>
+    <path d="M 2090 455 L 2100 465 L 2116 445" fill="none" stroke="#5eead4" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="2144" y="447" font-family="'DejaVu Sans', sans-serif" font-size="24" font-weight="700" fill="#e2e8f0">Clean</text>
+    <text x="2144" y="478" font-family="'DejaVu Sans', sans-serif" font-size="24" font-weight="700" fill="#e2e8f0">removal</text>
+  </g>
+
+  <!-- tool chips -->
+  <g font-family="'DejaVu Sans Mono', monospace" font-size="20" fill="#a7f3d0">
+    <rect x="1268" y="356" width="86" height="42" rx="21" fill="#0d2a2d" stroke="#2dd4bf" stroke-opacity="0.3"/>
+    <text x="1311" y="384" text-anchor="middle">apt</text>
+    <rect x="1278" y="418" width="130" height="42" rx="21" fill="#0d2a2d" stroke="#2dd4bf" stroke-opacity="0.3"/>
+    <text x="1343" y="446" text-anchor="middle">Flatpak</text>
+    <rect x="1972" y="238" width="100" height="42" rx="21" fill="#0d2a2d" stroke="#2dd4bf" stroke-opacity="0.3"/>
+    <text x="2022" y="266" text-anchor="middle">mise</text>
+    <rect x="2010" y="306" width="84" height="42" rx="21" fill="#0d2a2d" stroke="#2dd4bf" stroke-opacity="0.3"/>
+    <text x="2052" y="334" text-anchor="middle">npm</text>
+    <rect x="1512" y="404" width="98" height="42" rx="21" fill="#0d2a2d" stroke="#2dd4bf" stroke-opacity="0.3"/>
+    <text x="1561" y="432" text-anchor="middle">pipx</text>
+    <rect x="1624" y="404" width="82" height="42" rx="21" fill="#0d2a2d" stroke="#2dd4bf" stroke-opacity="0.3"/>
+    <text x="1665" y="432" text-anchor="middle">uv</text>
+  </g>
+
+  <g font-family="'DejaVu Sans', sans-serif" font-size="21" fill="#64748b" letter-spacing="3">
+    <text x="132" y="720">LINUX · X64 + ARM64</text>
+    <text x="2268" y="720" text-anchor="end">TAURI 2 · RUST · TYPESCRIPT</text>
+  </g>
+  <line x1="132" y1="690" x2="2268" y2="690" stroke="#5eead4" stroke-opacity="0.14" stroke-width="2"/>
+</svg>

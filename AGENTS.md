@@ -31,13 +31,28 @@ for compliance.
   templates with placeholders. If a secret lands, remove it, rotate it, and
   state it in the PR.
 - **Regenerate; never hand-edit** generated outputs: `dist/`, `src-tauri/target/`,
-  icons (`npm run icons`), lockfiles (`npm install` / `cargo` runs only),
-  install-script pins (`npm run pin`).
+  icons (`pnpm run icons`), lockfiles (`pnpm install` / `cargo` runs only),
+  install-script pins (`pnpm run pin`).
 - Bypass hooks only as a deliberate, stated exception (recorded in the PR body).
+
+## Dependencies, audits and releases
+
+- **pnpm is the JavaScript package manager** (`packageManager` in `package.json`);
+  `pnpm-lock.yaml` is the only JS lockfile. Never add a `package-lock.json` or
+  `yarn.lock`.
+- **Keep dependencies on the latest stable releases and runtimes on LTS.**
+  Update through `pnpm` / `cargo`; never hand-edit a lockfile.
+- **Audits are mandatory.** `deps-audit` runs `pnpm audit --prod`, `cargo audit`
+  (reviewed `.cargo/audit.toml` exemptions), OSV over both lockfiles, and the
+  install-script pin check. Local parity: `scripts/deps.sh`.
+- **Releases are tag-driven.** A `v*` tag builds the supported platforms
+  (Linux x64 + arm64, `.deb` + AppImage) through
+  `.github/workflows/release.yml`. Windows/macOS are not supported yet; do not
+  add them to the matrix before the port exists.
 
 ## Verify before push
 
-- **Run the gate before every push:** `npm run check`
+- **Run the gate before every push:** `pnpm run check`
   (= `tsc --noEmit && vite build && cargo test`).
 - Enable hooks once after cloning: `git config core.hooksPath .githooks`.
   The hooks then enforce trunk refusals, Conventional Commits subjects and the
@@ -48,10 +63,10 @@ for compliance.
 
 | Task | Command |
 |---|---|
-| Install node toolchain | `npm ci` |
-| The gate (before every push) | `npm run check` |
+| Install node toolchain | `pnpm install --frozen-lockfile` |
+| The gate (before every push) | `pnpm run check` |
 | Rust tests only | `cargo test --manifest-path src-tauri/Cargo.toml` |
-| Install-script pin check (network) | `npm run pin:check` |
+| Install-script pin check (network) | `pnpm run pin:check` |
 | Dependency audit parity (network / `--offline`) | `scripts/deps.sh` |
 | Enable hooks | `git config core.hooksPath .githooks` |
 | Ship work | push task branch, `gh pr create --base dev` |
