@@ -109,7 +109,7 @@ if curl --proto '=https' --tlsv1.2 -fsSL "$url" -o "$tmp"; then
     echo "Checksum mismatch for $url" >&2
     echo "  expected: $sum" >&2
     echo "  actual:   $(sha256sum "$tmp" | cut -d' ' -f1)" >&2
-    echo "Refusing to run it. The script may have been updated: run 'npm run pin' and review the change." >&2
+    echo "Refusing to run it. The script may have been updated: run 'pnpm run pin' and review the change." >&2
   else
     sh "$tmp" "$@"; rc=$?
   fi

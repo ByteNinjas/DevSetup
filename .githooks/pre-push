@@ -53,9 +53,9 @@ root=$(git rev-parse --show-toplevel 2>/dev/null) || root=""
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX
 cd "$root" || { echo "pre-push: cannot enter repo root $root" >&2; exit 1; }
 
-# --- The gate (same commands as `npm run check`) ---
-echo "pre-push: running the project gate (npm run check)..."
-if ! npm run check; then
+# --- The gate (same commands as `pnpm run check`) ---
+echo "pre-push: running the project gate (pnpm run check)..."
+if ! pnpm run check; then
     echo "pre-push: gate FAILED - push aborted. Fix the failures on the branch and push again." >&2
     exit 1
 fi
