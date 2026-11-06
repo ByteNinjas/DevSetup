@@ -3,7 +3,7 @@
 //! These live in the project's real test suite on purpose: if any file below
 //! is deleted, weakened or reworded away from its contract, `cargo test`
 //! fails — in CI (guard workflows run on trunks, deps-audit on shared files)
-//! and locally (the pre-push gate runs `npm run check`, which runs these).
+//! and locally (the pre-push gate runs `pnpm run check`, which runs these).
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -68,7 +68,7 @@ fn pre_push_contract() {
         "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX",
     );
     // The gate is the project's own check target.
-    must_have(&h, "pre-push", "npm run check");
+    must_have(&h, "pre-push", "pnpm run check");
 }
 
 #[test]
@@ -120,7 +120,7 @@ fn pre_push_lets_task_branches_through_the_trunk_check() {
     // no-op, run it, and require exit 0.
     let hook = root().join(".githooks/pre-push");
     let src = fs::read_to_string(&hook).unwrap();
-    let patched = src.replace("npm run check", "true");
+    let patched = src.replace("pnpm run check", "true");
     assert_ne!(patched, src, "gate line disappeared from pre-push");
 
     let payloads = [
@@ -273,6 +273,31 @@ fn prune_workflow_contract() {
 }
 
 #[test]
+fn release_workflow_is_tag_driven_and_linux_only() {
+    let w = rd(".github/workflows/release.yml");
+    // Tag-driven: a v* tag is the only trigger, and it publishes to it.
+    must_have(&w, "release.yml", "tags: ['v*']");
+    must_have(&w, "release.yml", "contents: write");
+    must_have(&w, "release.yml", "tagName: ${{ github.ref_name }}");
+    // Supported platforms only: Linux x64 + arm64, .deb + AppImage.
+    must_have(&w, "release.yml", "ubuntu-24.04");
+    must_have(&w, "release.yml", "ubuntu-24.04-arm");
+    must_have(&w, "release.yml", "--bundles deb,appimage");
+    must_not_have(&w, "release.yml", "windows-latest");
+    must_not_have(&w, "release.yml", "macos-latest");
+    // The tag must match the version that is actually built.
+    must_have(&w, "release.yml", "does not match tauri.conf.json");
+    // Serialized jobs: one release, created once, then asset uploads.
+    must_have(&w, "release.yml", "max-parallel: 1");
+    must_have(&w, "release.yml", "tauri-apps/tauri-action@v1");
+    // Reproducible installs and the current toolchain pins.
+    must_have(&w, "release.yml", "pnpm install --frozen-lockfile");
+    must_have(&w, "release.yml", "pnpm/action-setup@v6");
+    must_have(&w, "release.yml", "actions/setup-node@v7");
+    must_have(&w, "release.yml", "dtolnay/rust-toolchain@stable");
+}
+
+#[test]
 fn dependabot_targets_the_integration_trunk() {
     let d = rd(".github/dependabot.yml");
     for eco in ["package-ecosystem: npm", "package-ecosystem: cargo", "package-ecosystem: github-actions"] {
@@ -284,12 +309,31 @@ fn dependabot_targets_the_integration_trunk() {
 }
 
 #[test]
+fn package_manager_is_pnpm() {
+    let pkg = rd("package.json");
+    must_have(&pkg, "package.json", "\"packageManager\": \"pnpm@");
+    must_have(&pkg, "package.json", "\"node\": \">=24");
+    // One JavaScript lockfile, and it is the one the audits scan.
+    assert!(
+        !root().join("package-lock.json").exists(),
+        "package-lock.json must not exist after the pnpm migration"
+    );
+    assert!(
+        root().join("pnpm-lock.yaml").exists(),
+        "pnpm-lock.yaml must be committed"
+    );
+}
+
+#[test]
 fn deps_audit_is_pinned_and_off_round() {
     let workflow = rd(".github/workflows/deps-audit.yml");
     let script = rd("scripts/deps.sh");
 
-    // Weekly cron on an off-round minute.
+    // Weekly cron on an off-round minute; dependency PRs target dev, release
+    // PRs target main, so both trunks must run the gate.
     must_have(&workflow, "deps-audit.yml", "'23 4 * * 1'");
+    must_have(&workflow, "deps-audit.yml", "branches: [dev, main]");
+    must_have(&workflow, "deps-audit.yml", "'.cargo/audit.toml'");
     // Pinned scanner: version AND checksum, verified with sha256sum -c -.
     let sha = "160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b";
     must_have(&workflow, "deps-audit.yml", "OSV_VERSION=v2.7.0");
@@ -301,12 +345,18 @@ fn deps_audit_is_pinned_and_off_round() {
     // Both files must pin the same scanner binary (drift is the failure mode).
     must_have(&script, "scripts/deps.sh", "OSV_VERSION=v2.7.0");
     must_have(&script, "scripts/deps.sh", sha);
-    // Scans both lockfiles through the reviewed exemption file; npm audit
+    // Scans both lockfiles through the reviewed exemption file; pnpm audit
     // (prod scope) and pin staleness round it out.
     must_have(&workflow, "deps-audit.yml", "--config=.osv-scanner.toml");
-    must_have(&workflow, "deps-audit.yml", "--lockfile=package-lock.json");
+    must_have(&workflow, "deps-audit.yml", "--lockfile=pnpm-lock.yaml");
     must_have(&workflow, "deps-audit.yml", "--lockfile=src-tauri/Cargo.lock");
-    must_have(&workflow, "deps-audit.yml", "npm audit --omit=dev");
+    // Explicit ecosystem audits: pnpm for JavaScript, cargo-audit for Rust.
+    must_have(&workflow, "deps-audit.yml", "pnpm audit --prod");
+    must_have(&workflow, "deps-audit.yml", "cargo audit --file src-tauri/Cargo.lock");
+    must_have(&script, "scripts/deps.sh", "cargo audit --file src-tauri/Cargo.lock");
+    // The audit installs pnpm from the packageManager pin, on a known LTS Node.
+    must_have(&workflow, "deps-audit.yml", "pnpm/action-setup@v6");
+    must_have(&workflow, "deps-audit.yml", "actions/setup-node@v7");
     must_have(&workflow, "deps-audit.yml", "node scripts/pin-scripts.mjs --check");
     must_have(&script, "scripts/deps.sh", "--config=.osv-scanner.toml");
     script_has_gate(&script);
@@ -337,6 +387,10 @@ fn osv_exemptions_are_scoped_and_reasoned() {
     for version in ["0.18.5", "1.0.4", "0.2.11"] {
         must_have(&cfg, ".osv-scanner.toml", &format!("version = \"{version}\""));
     }
+    // cargo-audit uses the same reviewed glib advisory as the OSV scan;
+    // advisory ids cannot hide a future finding in the same crate.
+    let audit = rd(".cargo/audit.toml");
+    must_have(&audit, ".cargo/audit.toml", "RUSTSEC-2024-0429");
     // Policy must be written down next to the mechanism.
     let conv = rd("CONVENTIONS.md");
     must_have(&conv, "CONVENTIONS.md", "Dependency exceptions");
@@ -361,6 +415,11 @@ fn agents_md_carries_the_hard_rules_inline() {
         "git config core.hooksPath .githooks",
         "linked worktree",
         "Actions that cannot be undone are not options",
+        "pnpm audit --prod",
+        "cargo audit",
+        "latest stable",
+        "tag-driven",
+        "Linux x64 + arm64",
     ] {
         must_have(&a, "AGENTS.md", rule);
     }

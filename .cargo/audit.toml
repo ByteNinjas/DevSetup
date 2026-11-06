@@ -1,0 +1,15 @@
+# cargo-audit policy. It mirrors the reviewed exemptions in
+# .osv-scanner.toml: advisory-scoped ignores cannot hide a future advisory
+# (each one gets a new id), and the target filters keep the audit focused on
+# the Linux platforms DevSetup supports. Policy: CONVENTIONS.md,
+# "Dependency exceptions".
+[advisories]
+ignore = [
+    # RUSTSEC-2024-0429 (glib 0.18.5, via Tauri 2's GTK stack).
+    # Fix: the Tauri 3 / gtk-rs 0.20 migration, tracked in ROADMAP.md.
+    "RUSTSEC-2024-0429",
+]
+
+[target]
+os = ["linux"]
+arch = ["x86_64", "aarch64"]

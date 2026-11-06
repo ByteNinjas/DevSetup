@@ -1,7 +1,7 @@
 // Pins install scripts: downloads every `type: script` URL in manifest/tools.yaml (with curl, exactly like
 // DevSetup does at install time) and records its SHA-256 in the manifest.
-//   npm run pin          write new or changed hashes
-//   npm run pin:check    only report scripts that differ from their pin (exit 1), for CI
+//   pnpm run pin          write new or changed hashes
+//   pnpm run pin:check    only report scripts that differ from their pin (exit 1), for CI
 import { readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";

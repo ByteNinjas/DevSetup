@@ -54,9 +54,9 @@ undo it later" is closed. `1`, `2`, `4` are guarded in local hooks and/or CI
    repo-held credentials; if you find one, remove it, rotate it and say so.
 5. **Generated files are regenerated, never hand-edited.**
    `dist/` (`vite build`), `src-tauri/target/` (`cargo`), icons
-   (`npm run icons`), lockfiles (`package-lock.json` / `Cargo.lock`, via
-   `npm install|ci` / `cargo` only), install-script pins in
-   `manifest/tools.yaml` (`npm run pin`). Hand-edits are lost on the next
+   (`pnpm run icons`), lockfiles (`pnpm-lock.yaml` / `Cargo.lock`, via
+   `pnpm install` / `cargo` only), install-script pins in
+   `manifest/tools.yaml` (`pnpm run pin`). Hand-edits are lost on the next
    regen anyway — if a generated output is wrong, fix the generator.
 6. **Hooks are bypassed only as a deliberate, stated exception.**
    `--no-verify` or disabling `core.hooksPath` is legitimate exactly twice in
@@ -79,7 +79,7 @@ them exactly as found.
 
 ```bash
 git config core.hooksPath .githooks   # one-time after clone
-npm run check                          # tsc --noEmit && vite build && cargo test
+pnpm run check                         # tsc --noEmit && vite build && cargo test
 ```
 
 - `.githooks/pre-push` refuses any push to a trunk (commits, `--force`, and
@@ -114,18 +114,26 @@ All on the free plan, all payload-only or shallow-cheap:
   Unproven ⇒ untouched. Payload-only: no checkout. This is the single writer
   for the "delete merged branches" concern: no inline prune step may exist
   elsewhere.
-- `deps-audit.yml`: weekly cron (off the round minute) and PRs into `main`
-  touching dependency files. Runs a sha-verified `osv-scanner` over
-  `package-lock.json` + `Cargo.lock`, `npm audit --omit=dev`, and the stale
-  pin check. Findings fail; patch by regenerating locks (allowed commands
-  only) or by accepting the Dependabot PRs.
+- `deps-audit.yml`: weekly cron (off the round minute) and PRs into `dev` or
+  `main` touching dependency files. Runs a sha-verified `osv-scanner` over
+  `pnpm-lock.yaml` + `Cargo.lock`, `cargo audit` (reviewed
+  `.cargo/audit.toml` exemptions), `pnpm audit --prod`, and the stale pin
+  check. Findings fail; patch by regenerating locks (allowed commands only)
+  or by accepting the Dependabot PRs.
+- `release.yml`: tag-driven (`v*`). Serialized Linux x64 + arm64 jobs build
+  `.deb` + AppImage with `tauri-apps/tauri-action` and publish them to the
+  tag's GitHub release. The tag must match `tauri.conf.json` and
+  `package.json`; Windows/macOS join only after their port exists.
 
 ## Dependencies
 
-- `.github/dependabot.yml`: npm (`/`), cargo (`/src-tauri`), `github-actions`
-  — all `weekly`, all targeting `dev`.
-- Lockfiles change only through package-manager runs; bumps flow in as
-  Dependabot PRs into `dev`.
+- **pnpm** is the JavaScript package manager, pinned through `packageManager`
+  in `package.json`; `pnpm-lock.yaml` is the only JS lockfile. Node.js is LTS.
+- Dependencies track the latest stable releases within their declared majors.
+- `.github/dependabot.yml`: npm (`/`, which covers the pnpm lockfile), cargo
+  (`/src-tauri`), `github-actions` — all `weekly`, all targeting `dev`.
+- Lockfiles change only through package-manager runs (`pnpm install`,
+  `cargo update`); bumps flow in as Dependabot PRs into `dev`.
 - Local parity: `scripts/deps.sh` (or `--offline` to skip network steps).
 
 ### Dependency exceptions
@@ -136,10 +144,15 @@ must state the exact vulnerable **version** and a **reason** (both enforced
 by contract tests, as is the CONVENTIONS section you are reading). Exempting
 an unlisted vulnerable version, or dropping a reason, is a violation.
 
+`cargo audit` is the second Rust gate. Its reviewed advisory ignores live in
+`.cargo/audit.toml`, scoped to the same findings as the OSV overrides (today
+only `glib`/RUSTSEC-2024-0429); unmaintained-crate warnings stay visible until
+the dependency chain drops them.
+
 - Scoping matters: a `version`-less override would also hide future
   vulnerabilities in that package — forbidden. Exemptions lapse the moment
   the package version moves, so fixes and new findings surface again.
-- npm production exposure remains gated by `npm audit --omit=dev`
+- JavaScript production exposure remains gated by `pnpm audit --prod`
   independently. The former dev-server exemptions (`vite 5.4.21`,
   `esbuild 0.21.5`) lapsed with the vite 8 bump (rolldown core, no esbuild
   in the lock anymore) and were removed; only findings that genuinely
