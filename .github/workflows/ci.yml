@@ -74,7 +74,7 @@ jobs:
         include:
           - runner: windows-latest
             label: Windows x64 preview
-          - runner: macos-14
+          - runner: macos-15
             label: macOS arm64 preview
     steps:
       - name: Checkout

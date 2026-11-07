@@ -284,7 +284,8 @@ fn release_workflow_is_tag_driven_for_every_supported_platform() {
     must_have(&w, "release.yml", "ubuntu-24.04-arm");
     must_have(&w, "release.yml", "bundles: deb,appimage");
     must_have(&w, "release.yml", "windows-latest");
-    must_have(&w, "release.yml", "macos-14");
+    must_have(&w, "release.yml", "macos-15");
+    must_have(&w, "release.yml", "macos-15-intel");
     must_have(&w, "release.yml", "bundles: nsis");
     must_have(&w, "release.yml", "bundles: app,dmg");
     must_have(&w, "release.yml", "Windows and macOS (preview)");
@@ -305,7 +306,7 @@ fn ci_compiles_the_preview_targets_before_a_release() {
     let w = rd(".github/workflows/ci.yml");
     must_have(&w, "ci.yml", "pnpm run check");
     must_have(&w, "ci.yml", "windows-latest");
-    must_have(&w, "ci.yml", "macos-14");
+    must_have(&w, "ci.yml", "macos-15");
     must_have(&w, "ci.yml", "cargo check --manifest-path src-tauri/Cargo.toml");
     must_have(&w, "ci.yml", "contents: read");
 }
