@@ -39,6 +39,10 @@
     "category": "DeveloperTool",
     "shortDescription": "Set up a development machine in a few clicks",
     "longDescription": "DevSetup installs and removes developer tools by role, keeps them updated, cleans up, and runs disposable Docker services for a project.",
+    "createUpdaterArtifacts": true,
+    "macOS": {
+      "signingIdentity": "-"
+    },
     "linux": {
       "deb": {
         "depends": [
@@ -49,6 +53,15 @@
           "/usr/share/polkit-1/actions/dev.devsetup.helper.policy": "../packaging/dev.devsetup.helper.policy"
         }
       }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/ByteNinjas/DevSetup/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE0NUNGNzNBNzAzRjVGNzcKUldSM1h6OXdPdmRjcEJtc21Remc0aStRekxCdGhrR0FNY1FkdGtDbWtaZ0lyUWJHRklRT05WWDIK",
+      "requireSignedVersion": true
     }
   }
 }
