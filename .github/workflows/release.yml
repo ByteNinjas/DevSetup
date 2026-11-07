@@ -1,14 +1,15 @@
 name: Release
 
-# Tag-driven release. Pushing a `v*` tag builds the supported Linux bundles
-# (x64 + arm64, `.deb` + AppImage) and publishes them to that tag's GitHub
+# Tag-driven release. Pushing a `v*` tag builds the supported bundles on
+# Linux (x64 + arm64, `.deb` + AppImage), Windows x64 (NSIS) and macOS
+# (arm64 + x64, `.app` + `.dmg`), then publishes them to that tag's GitHub
 # release. The matrix is serialized on purpose: the first job creates the
-# release, the second attaches its assets to the same release. Running them
-# in parallel would race two release-creation requests for one tag.
+# release, the later jobs attach their assets to the same release. Running
+# them in parallel would race several release-creation requests for one tag.
 #
-# Windows and macOS are deliberately absent: the app is Linux-only today
-# (`pkexec`, apt/polkit, std::os::unix). Do not add them before the port
-# exists (see AGENTS.md and ROADMAP.md).
+# Linux is the full-featured build. Windows and macOS are real, compiling
+# previews: the UI, setup files, Git and VS Code helpers work, while apt,
+# pkexec, Flatpak and other Linux-only actions stay disabled in the app.
 on:
   push:
     tags: ['v*']
@@ -18,7 +19,7 @@ permissions:
 
 jobs:
   release:
-    name: Linux ${{ matrix.label }}
+    name: ${{ matrix.label }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -27,11 +28,25 @@ jobs:
       matrix:
         include:
           - runner: ubuntu-24.04
-            label: x64
+            label: Linux x64
             target: x86_64-unknown-linux-gnu
+            bundles: deb,appimage
           - runner: ubuntu-24.04-arm
-            label: arm64
+            label: Linux arm64
             target: aarch64-unknown-linux-gnu
+            bundles: deb,appimage
+          - runner: windows-latest
+            label: Windows x64 preview
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+          - runner: macos-14
+            label: macOS arm64 preview
+            target: aarch64-apple-darwin
+            bundles: app,dmg
+          - runner: macos-14
+            label: macOS x64 preview
+            target: x86_64-apple-darwin
+            bundles: app,dmg
     steps:
       - name: Checkout the tagged commit
         uses: actions/checkout@v7
@@ -39,6 +54,7 @@ jobs:
           fetch-depth: 1
 
       - name: Install Tauri's Linux build dependencies
+        if: runner.os == 'Linux'
         run: |
           set -euo pipefail
           sudo apt-get update
@@ -75,6 +91,7 @@ jobs:
           workspaces: src-tauri -> target
 
       - name: Check the tag matches the app version
+        shell: bash
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME#v}"
@@ -97,16 +114,22 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: DevSetup ${{ github.ref_name }}
           releaseBody: |
-            DevSetup ${{ github.ref_name }} for Linux.
+            DevSetup ${{ github.ref_name }}.
 
-            **Downloads**
+            **Linux (full feature set)**
             - `*.deb` - recommended on Debian/Ubuntu (installs `/usr/bin/devsetup` and the polkit policy)
             - `*.AppImage` - portable build; user-level tools work, system-package steps need the `.deb`
+            - Architectures: x64 and arm64.
 
-            **Platforms:** Linux x64 and Linux arm64.
+            **Windows and macOS (preview)**
+            - Windows: `*.exe` (NSIS, current user). Unsigned, so SmartScreen may warn.
+            - macOS: `*.dmg` (arm64 and x64). Unsigned, so Gatekeeper may block the first launch
+              (right-click the app and choose Open, or allow it in System Settings).
+            - These builds compile and run, but installs, cleanup, updates, Doctor, drivers and
+              shell login changes are Linux-only and stay disabled in the preview.
 
-            Verify the file matches your architecture before installing. Full
+            Verify the file matches your platform and architecture before installing. Full
             install and usage notes live in the [README](https://github.com/${{ github.repository }}#readme).
           releaseDraft: false
           prerelease: false
-          args: --target ${{ matrix.target }} --bundles deb,appimage
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}

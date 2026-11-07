@@ -1,7 +1,7 @@
 //! Read-only scan of this machine: which tools from DevSetup's list are installed, which roles they suggest,
 //! and some other software DevSetup does not manage (recorded only as comments in a setup file).
 use crate::manifest::{self, Manifest, Method};
-use crate::{exec, state, system};
+use crate::{exec, platform, state, system};
 use serde::Serialize;
 use std::collections::HashSet;
 
@@ -79,6 +79,10 @@ pub fn scan() -> Scan {
     }).collect();
     let installed: HashSet<&str> = found.iter().map(|f| f.id.as_str()).collect();
     let roles = role_hits(&m, &installed);
+
+    if !platform::LINUX {
+        return Scan { system: system::distro().name, found, roles, extras: Extras::default() };
+    }
 
     // Software DevSetup does not manage. Anything already in the manifest is left out.
     let known = |pick: &dyn Fn(&Method) -> Option<String>| -> HashSet<String> { m.tools.iter().filter_map(|t| pick(&t.method)).collect() };

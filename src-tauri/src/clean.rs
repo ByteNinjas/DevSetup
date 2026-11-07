@@ -1,7 +1,7 @@
 //! Cleaner: free disk space from unused packages and caches. The UI only ever sends item ids;
 //! what each id does is fixed here, and folders are only ever emptied inside the user's home.
 use crate::exec::{self, cancelled, log, step, stream};
-use crate::system;
+use crate::{platform, system};
 use serde::Serialize;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
@@ -195,6 +195,16 @@ fn scan_npm(it: &mut CleanItem, home: Option<&Path>) {
 }
 
 pub fn scan() -> Vec<CleanItem> {
+    if !platform::LINUX {
+        return catalog().into_iter().map(|d| {
+            let mut it = CleanItem {
+                id: d.id.to_string(), name: d.name.to_string(), description: d.description.to_string(), command: describe(&d.action),
+                needs_root: matches!(d.action, Action::Root(_)), risk: d.risk, available: true, ..Default::default()
+            };
+            unavailable(&mut it, &format!("Cleaner is Linux-only today; this {} build is a preview.", platform::name()));
+            it
+        }).collect();
+    }
     let home = system::home();
     catalog().into_iter().map(|d| {
         let mut it = CleanItem {
@@ -274,6 +284,9 @@ fn run(app: &AppHandle, ids: &[String]) -> usize {
 }
 
 pub fn start(app: AppHandle, ids: Vec<String>) -> Result<(), String> {
+    if !platform::LINUX {
+        return Err(format!("Cleaning is Linux-only today; this {} build is a preview.", platform::name()));
+    }
     if exec::RUNNING.swap(true, Ordering::SeqCst) { return Err("a run is already in progress".into()); }
     exec::CANCEL.store(false, Ordering::SeqCst);
     std::thread::spawn(move || {
@@ -302,6 +315,7 @@ mod tests {
         assert_eq!(parse_docker_size("garbage"), None);
     }
 
+    #[cfg(unix)]
     #[test]
     fn targets_never_leave_home() {
         let home = Path::new("/home/u");
@@ -311,6 +325,7 @@ mod tests {
         assert!(safe_target(Path::new("relative"), ".cache").is_none());
     }
 
+    #[cfg(unix)]
     #[test]
     fn clearing_a_folder_keeps_it_and_never_follows_links() {
         let base = std::env::temp_dir().join(format!("devsetup-clean-{}", std::process::id()));

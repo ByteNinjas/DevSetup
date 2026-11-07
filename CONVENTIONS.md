@@ -120,10 +120,14 @@ All on the free plan, all payload-only or shallow-cheap:
   `.cargo/audit.toml` exemptions), `pnpm audit --prod`, and the stale pin
   check. Findings fail; patch by regenerating locks (allowed commands only)
   or by accepting the Dependabot PRs.
-- `release.yml`: tag-driven (`v*`). Serialized Linux x64 + arm64 jobs build
-  `.deb` + AppImage with `tauri-apps/tauri-action` and publish them to the
-  tag's GitHub release. The tag must match `tauri.conf.json` and
-  `package.json`; Windows/macOS join only after their port exists.
+- `release.yml`: tag-driven (`v*`). Serialized jobs build Linux x64 + arm64
+  (`.deb` + AppImage, full feature set), Windows x64 (NSIS) and macOS arm64/x64
+  (`.dmg`) with `tauri-apps/tauri-action` and publish them to the tag's GitHub
+  release. The tag must match `tauri.conf.json` and `package.json`. Windows and
+  macOS are labeled previews; Linux-only actions stay disabled there.
+- `ci.yml`: every PR into `dev` or `main` runs the full Linux gate
+  (`pnpm run check`) plus a `cargo check` compile of the Windows and macOS
+  preview targets, so a broken port fails before a tag is pushed.
 
 ## Dependencies
 
