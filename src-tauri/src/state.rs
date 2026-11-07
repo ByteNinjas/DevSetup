@@ -7,7 +7,7 @@ use std::path::PathBuf;
 pub struct State { #[serde(default)] pub managed: Vec<String> }
 
 fn base() -> Option<PathBuf> {
-    std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).or_else(|| system::home().map(|h| h.join(".local/share")))
+    system::data_dir()
 }
 fn path() -> Option<PathBuf> { Some(base()?.join("devsetup/state.json")) }
 /// Location used while the app was still called FlashSetup; read once so earlier installs stay managed.

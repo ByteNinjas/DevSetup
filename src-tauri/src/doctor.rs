@@ -1,7 +1,7 @@
 //! Doctor: read-only health checks with suggested fixes. Fixes are fixed operations chosen by id.
 use crate::exec::{self, cancelled, log, step, stream};
 use crate::manifest::{self, Manifest, Method, Tool};
-use crate::{preflight, state, system};
+use crate::{platform, preflight, state, system};
 use serde::Serialize;
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
@@ -237,6 +237,15 @@ fn root_helper_finding(appimage: Option<&str>, exe: &str, policy_installed: bool
 }
 
 pub fn scan() -> Vec<Finding> {
+    if !platform::LINUX {
+        return vec![f(
+            "platform",
+            "Platform checks are Linux-only",
+            "info",
+            format!("Doctor's system, apt, Flatpak, Docker and polkit checks are written for Linux. This {} build is a preview.", platform::name()),
+            "Use the Linux .deb or AppImage for the full Doctor report.",
+        )];
+    }
     let m = manifest::load();
     let apt = system::apt_installed();
     let mut v: Vec<Finding> = vec![];
@@ -269,6 +278,9 @@ fn fix_action(id: &str) -> Option<FixAction> {
 }
 
 pub fn start_fix(app: AppHandle, id: String) -> Result<(), String> {
+    if !platform::LINUX {
+        return Err(format!("Doctor fixes are Linux-only today; this {} build is a preview.", platform::name()));
+    }
     let action = fix_action(&id).ok_or_else(|| "unknown fix".to_string())?;
     if exec::RUNNING.swap(true, Ordering::SeqCst) { return Err("a run is already in progress".into()); }
     exec::CANCEL.store(false, Ordering::SeqCst);

@@ -3,9 +3,11 @@ mod doctor;
 mod drivers;
 mod exec;
 mod gitwiz;
+#[cfg(target_os = "linux")]
 mod helper;
 mod manifest;
 mod plan;
+mod platform;
 mod preflight;
 mod review;
 mod scan;
@@ -21,6 +23,7 @@ use manifest::{Manifest, Tool};
 use serde::Serialize;
 use std::collections::HashSet;
 
+#[cfg(target_os = "linux")]
 pub use helper::run as helper_run;
 
 #[derive(Serialize)]

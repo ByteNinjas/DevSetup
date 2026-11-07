@@ -18,7 +18,7 @@ Status: `[x]` done, `[~]` started, `[ ]` planned. Features are built roughly in 
 - [x] Remove tools DevSetup installed with apt, Flatpak, mise, npm and pipx, and install-script tools that define an `uninstall` command. Dependents go first, and a tool another remaining tool needs is kept
 - [x] Pinned install scripts: checksum verification before a script runs, strict mode, optional version pins for mise, npm and pipx tools, and `pnpm run pin` to generate the hashes. All eight install scripts carry committed pins, and the weekly `deps-audit` workflow runs the stale-pin check
 - [~] Polkit policy and `.deb` packaging for the root helper: `mainBinaryName`, menu category, a `pkexec` dependency and the policy install are configured in `tauri.conf.json`, contract-tested in `tests/packaging_guard.rs`, and Doctor reports AppImage and missing-policy cases. Still to do: a real `tauri build` and install on a clean machine, an rpm target
-- [x] Tag-driven release workflow (`.github/workflows/release.yml`): a `v*` tag builds Linux x64 + arm64 `.deb` + AppImage bundles and publishes them to the tag's GitHub release, with a tag/version consistency check
+- [x] Tag-driven release workflow (`.github/workflows/release.yml`): a `v*` tag builds Linux x64 + arm64 `.deb` + AppImage bundles, a Windows x64 NSIS installer and macOS arm64/x64 `.dmg` files, and publishes them to the tag's GitHub release, with a tag/version consistency check. Windows and macOS are previews and are compile-checked by `.github/workflows/ci.yml` on every PR
 - [~] Unit and integration tests for plan and executor: the planning rules, the install and remove commands and their ordering are unit-tested. Still to do: an end-to-end run against a throwaway root
 
 ## Phase 2: features that set it apart
@@ -44,7 +44,8 @@ Status: `[x]` done, `[~]` started, `[ ]` planned. Features are built roughly in 
 
 ## Phase 5: later
 - [ ] Command-line version: `devsetup apply devsetup.yaml` for servers, CI and WSL
-- [ ] Fedora, Arch and macOS support
+- [ ] Fedora and Arch support
+- [ ] Full Windows and macOS feature parity (installs, cleanup, updates, Doctor and shell changes)
 - [ ] Remote, signed manifest updates so new tools arrive without an app release
 - [ ] Tool detail panel with description, size and version picker
 - [ ] Ollama and other installers that need sudo
