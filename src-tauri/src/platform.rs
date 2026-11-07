@@ -134,7 +134,15 @@ pub fn is_executable(path: &Path) -> bool {
     if !md.is_file() { return false; }
     #[cfg(unix)]
     { use std::os::unix::fs::PermissionsExt; md.permissions().mode() & 0o111 != 0 }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        // CreateProcess only runs PE images, and .cmd/.bat files go through
+        // cmd.exe. An extensionless file is never runnable: VS Code ships
+        // `bin\code` as a Git-Bash script next to the real `bin\code.cmd`.
+        let Some(ext) = path.extension().and_then(|e| e.to_str()) else { return false };
+        executable_extensions().iter().any(|x| x.trim_start_matches('.').eq_ignore_ascii_case(ext))
+    }
+    #[cfg(not(any(unix, windows)))]
     { true }
 }
 
@@ -225,5 +233,26 @@ mod tests {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert!(is_executable(&path));
         std::fs::remove_file(&path).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn is_executable_requires_a_runnable_extension() {
+        let mut suffix = [0u8; 8];
+        random_bytes(&mut suffix).unwrap();
+        let tag: String = suffix.iter().map(|b| format!("{b:02x}")).collect();
+        let dir = std::env::temp_dir().join(format!("devsetup-platform-{tag}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        // What VS Code ships: a Git-Bash script next to the real cmd shim.
+        let script = dir.join("code");
+        std::fs::write(&script, b"#!/bin/sh\n").unwrap();
+        let shim = dir.join("code.cmd");
+        std::fs::write(&shim, b"@echo off\n").unwrap();
+        let exe = dir.join("code.exe");
+        std::fs::write(&exe, b"MZ").unwrap();
+        assert!(!is_executable(&script), "an extensionless script cannot be run by CreateProcess");
+        assert!(is_executable(&shim));
+        assert!(is_executable(&exe));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

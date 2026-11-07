@@ -5,13 +5,17 @@
 //! fails — in CI (guard workflows run on trunks, deps-audit on shared files)
 //! and locally (the pre-push gate runs `pnpm run check`, which runs these).
 
-// The hooks and permission bits under test are Unix-only. Excluding the whole
-// crate keeps `cargo test` compiling on Windows preview builds.
-#![cfg(unix)]
+// The hooks and permission bits under test are Unix-only, so those tests are
+// gated individually. The file-content contracts run everywhere, including
+// Windows preview builds (`cargo check --all-targets` compiles them there).
 
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+#[cfg(unix)]
+use std::path::Path;
+#[cfg(unix)]
 use std::process::{Command, Stdio};
 
 /// The repository root (this Cargo manifest lives in `<repo>/src-tauri`).
@@ -42,6 +46,7 @@ fn must_not_have(text: &str, what: &str, needle: &str) {
 
 // ---------- hooks ----------
 
+#[cfg(unix)]
 #[test]
 fn hooks_exist_parse_and_are_executable() {
     for name in ["pre-push", "commit-msg", "post-merge"] {
@@ -75,6 +80,7 @@ fn pre_push_contract() {
     must_have(&h, "pre-push", "pnpm run check");
 }
 
+#[cfg(unix)]
 #[test]
 fn pre_push_refuses_trunk_payloads() {
     let hook = root().join(".githooks/pre-push");
@@ -113,6 +119,7 @@ fn pre_push_refuses_trunk_payloads() {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn pre_push_lets_task_branches_through_the_trunk_check() {
     // A task branch payload must NOT trip the trunk regex (boundary check:
@@ -157,6 +164,7 @@ fn pre_push_lets_task_branches_through_the_trunk_check() {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn commit_msg_contract() {
     let hook = root().join(".githooks/commit-msg");
@@ -205,6 +213,7 @@ fn commit_msg_contract() {
 }
 
 /// Runs a hook with a message file argument; returns (status, stderr).
+#[cfg(unix)]
 fn run_bash(hook: &Path, msg_file: &Path) -> (std::process::ExitStatus, String) {
     let out = Command::new("bash")
         .arg(hook)
@@ -215,6 +224,7 @@ fn run_bash(hook: &Path, msg_file: &Path) -> (std::process::ExitStatus, String) 
 }
 
 /// A millisecond-ish tick so parallel test files do not collide.
+#[cfg(unix)]
 fn chronoless() -> u128 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos() % 1_000_000
@@ -312,7 +322,7 @@ fn ci_compiles_the_preview_targets_before_a_release() {
     must_have(&w, "ci.yml", "windows-latest");
     must_have(&w, "ci.yml", "macos-15");
     must_have(&w, "ci.yml", "macos-15-intel");
-    must_have(&w, "ci.yml", "cargo check --manifest-path src-tauri/Cargo.toml");
+    must_have(&w, "ci.yml", "cargo check --all-targets --manifest-path src-tauri/Cargo.toml");
     must_have(&w, "ci.yml", "contents: read");
 }
 
