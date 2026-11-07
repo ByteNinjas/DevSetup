@@ -2,13 +2,12 @@
 //! A stack is a generated compose file under ~/.local/share/devsetup/stacks/<name>/. Ports are bound to 127.0.0.1 only.
 //! The UI sends a stack name, service ids and an action; names are validated and nothing reaches a shell.
 use crate::exec::{self, cancelled, log, step, stream};
-use crate::system;
+use crate::{platform, system};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Write;
 use std::net::TcpListener;
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::Ordering;
@@ -210,7 +209,7 @@ fn is_local_url(u: &str) -> bool {
 // ---------- files ----------
 
 fn root() -> Result<PathBuf, String> {
-    let base = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).or_else(|| system::home().map(|h| h.join(".local/share"))).ok_or_else(|| "no home folder".to_string())?;
+    let base = system::data_dir().ok_or_else(|| "no home folder".to_string())?;
     Ok(base.join("devsetup/stacks"))
 }
 
@@ -220,12 +219,12 @@ fn dir_of(name: &str) -> Result<PathBuf, String> {
 }
 
 fn write_private(path: &Path, content: &str) -> Result<(), String> {
-    let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(path).map_err(|e| format!("Could not write {}: {e}", path.display()))?;
+    let mut f = platform::private_file(path).map_err(|e| format!("Could not write {}: {e}", path.display()))?;
     f.write_all(content.as_bytes()).map_err(|e| format!("Could not write {}: {e}", path.display()))
 }
 
 fn write_stack(dir: &Path, b: &Built) -> Result<(), String> {
-    std::fs::DirBuilder::new().mode(0o700).recursive(true).create(dir).map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
+    platform::private_dir(dir).map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
     write_private(&dir.join("compose.yaml"), &b.compose)?;
     let mut meta = b.meta.clone();
     meta.created = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
@@ -251,9 +250,8 @@ fn remove_stack_dir(dir: &Path) -> Result<(), String> {
 }
 
 fn random_hex(bytes: usize) -> Result<String, String> {
-    use std::io::Read;
     let mut buf = vec![0u8; bytes];
-    std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut buf)).map_err(|e| format!("Could not generate a password: {e}"))?;
+    platform::random_bytes(&mut buf)?;
     Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
 }
 
@@ -265,8 +263,8 @@ fn port_free(p: u16) -> bool { TcpListener::bind(("127.0.0.1", p)).is_ok() }
 pub struct DockerStatus { pub compose: bool, pub daemon: bool, pub reason: String }
 
 fn docker_status() -> DockerStatus {
-    let compose = Command::new("timeout").args(["10", "docker", "compose", "version"]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().map(|s| s.success()).unwrap_or(false);
-    match Command::new("timeout").args(["10", "docker", "info", "--format", "{{.ServerVersion}}"]).stdin(Stdio::null()).output() {
+    let compose = platform::timeout(10, "docker", &["compose", "version"]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().map(|s| s.success()).unwrap_or(false);
+    match platform::timeout(10, "docker", &["info", "--format", "{{.ServerVersion}}"]).stdin(Stdio::null()).output() {
         Ok(o) if o.status.success() => DockerStatus { compose, daemon: true, reason: String::new() },
         Ok(o) => {
             let text = String::from_utf8_lossy(&o.stderr).to_string();
@@ -280,7 +278,7 @@ fn docker_status() -> DockerStatus {
 /// "stack/service" -> container state, for every container DevSetup created.
 fn container_states() -> HashMap<String, String> {
     let fmt = "{{.Label \"com.devsetup.stack\"}}|{{.Label \"com.devsetup.service\"}}|{{.State}}";
-    let out = Command::new("timeout").args(["15", "docker", "ps", "-a", "--filter", "label=com.devsetup.stack", "--format", fmt]).stdin(Stdio::null()).stderr(Stdio::null()).output();
+    let out = platform::timeout(15, "docker", &["ps", "-a", "--filter", "label=com.devsetup.stack", "--format", fmt]).stdin(Stdio::null()).stderr(Stdio::null()).output();
     let text = out.map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
     text.lines().filter_map(|l| { let p: Vec<&str> = l.split('|').collect(); if p.len() == 3 { Some((format!("{}/{}", p[0], p[1]), p[2].to_string())) } else { None } }).collect()
 }
@@ -399,7 +397,7 @@ pub fn open_link(name: &str, index: usize) -> Result<(), String> {
     let meta = read_meta(&dir_of(name)?).ok_or_else(|| "That stack was not found.".to_string())?;
     let link = meta.links.get(index).ok_or_else(|| "That link was not found.".to_string())?;
     if !is_local_url(&link.url) { return Err("Only local addresses can be opened.".into()); }
-    Command::new("xdg-open").arg(&link.url).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map(|_| ()).map_err(|e| format!("Could not open the browser: {e}"))
+    platform::open_url(&link.url)
 }
 
 #[cfg(test)]

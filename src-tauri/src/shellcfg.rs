@@ -1,8 +1,9 @@
 //! Shell setup: one clearly marked block in ~/.zshrc or ~/.bashrc. Nothing outside the markers is ever changed,
 //! the first original is backed up, and the block can be removed again.
 use crate::exec::{self, cancelled, log, step, stream};
-use crate::system;
+use crate::{platform, system};
 use serde::{Deserialize, Serialize};
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -189,10 +190,12 @@ fn write_atomic(target: &Path, content: &str) -> Result<(), String> {
     let dir = target.parent().ok_or_else(|| "no parent folder".to_string())?;
     let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let tmp = dir.join(format!(".{name}.devsetup-tmp"));
+    #[cfg(unix)]
     let mode = std::fs::metadata(target).map(|m| m.permissions().mode() & 0o777).unwrap_or(0o644);
-    let result = std::fs::write(&tmp, content)
-        .and_then(|_| std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(mode)))
-        .and_then(|_| std::fs::rename(&tmp, target));
+    let written = std::fs::write(&tmp, content);
+    #[cfg(unix)]
+    let written = written.and_then(|_| std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(mode)));
+    let result = written.and_then(|_| std::fs::rename(&tmp, target));
     if let Err(e) = result { let _ = std::fs::remove_file(&tmp); return Err(format!("Could not write {}: {e}", target.display())); }
     Ok(())
 }
@@ -259,6 +262,7 @@ pub struct Available {
 pub struct ShellState { pub login_shell: String, pub env_shell: String, pub zsh_installed: bool, pub bash_installed: bool, pub files: Vec<RcInfo>, pub available: Available }
 
 /// Login shell of `uid` from the contents of /etc/passwd.
+#[cfg_attr(not(unix), allow(dead_code))]
 fn login_shell_of(uid: u32, passwd: &str) -> Option<String> {
     passwd.lines().find_map(|l| {
         let f: Vec<&str> = l.split(':').collect();
@@ -266,10 +270,20 @@ fn login_shell_of(uid: u32, passwd: &str) -> Option<String> {
     })
 }
 
-pub fn state() -> ShellState {
+#[cfg(unix)]
+fn current_login_shell() -> String {
     // SAFETY: getuid has no preconditions.
     let uid = unsafe { libc::getuid() };
     let passwd = std::fs::read_to_string("/etc/passwd").unwrap_or_default();
+    login_shell_of(uid, &passwd).unwrap_or_default()
+}
+
+#[cfg(not(unix))]
+fn current_login_shell() -> String {
+    std::env::var("COMSPEC").or_else(|_| std::env::var("SHELL")).unwrap_or_default()
+}
+
+pub fn state() -> ShellState {
     let any = |paths: &[&str]| paths.iter().any(|p| Path::new(p).exists());
     let mut files = vec![];
     for shell in ["zsh", "bash"] {
@@ -280,7 +294,7 @@ pub fn state() -> ShellState {
         files.push(RcInfo { shell: shell.to_string(), path: path.to_string_lossy().into_owned(), exists: target.exists(), has_block, damaged });
     }
     ShellState {
-        login_shell: login_shell_of(uid, &passwd).unwrap_or_default(),
+        login_shell: current_login_shell(),
         env_shell: std::env::var("SHELL").unwrap_or_default(),
         zsh_installed: system::on_path("zsh") || Path::new("/usr/bin/zsh").exists(),
         bash_installed: system::on_path("bash"),
@@ -295,6 +309,9 @@ pub fn state() -> ShellState {
 
 /// Makes zsh or bash the login shell through the root helper (one password prompt).
 pub fn start_login_shell(app: AppHandle, shell: String) -> Result<(), String> {
+    if !platform::LINUX {
+        return Err(format!("Changing the login shell is Linux-only today; this {} build is a preview.", platform::name()));
+    }
     if shell != "zsh" && shell != "bash" { return Err("Choose zsh or bash.".into()); }
     if exec::RUNNING.swap(true, Ordering::SeqCst) { return Err("a run is already in progress".into()); }
     exec::CANCEL.store(false, Ordering::SeqCst);
@@ -384,6 +401,7 @@ mod tests {
         assert!(w[0].contains("Starship"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn files_are_written_atomically_keep_their_mode_and_symlinks_survive() {
         let base = std::env::temp_dir().join(format!("devsetup-shell-{}", std::process::id()));

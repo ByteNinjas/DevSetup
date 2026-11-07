@@ -2,7 +2,7 @@
 //! what each id does is fixed here or comes from the built-in manifest.
 use crate::exec::{self, cancelled, log, step, stream};
 use crate::manifest::{self, Method};
-use crate::system;
+use crate::{platform, system};
 use serde::Serialize;
 use std::path::Path;
 use std::process::Command;
@@ -130,6 +130,12 @@ fn scan_npm(it: &mut UpdateItem) {
 }
 
 pub fn scan() -> Vec<UpdateItem> {
+    if !platform::LINUX {
+        return catalog().into_iter().map(|(mut it, _)| {
+            unavailable(&mut it, &format!("Updates are Linux-only today; this {} build is a preview.", platform::name()));
+            it
+        }).collect();
+    }
     catalog().into_iter().map(|(mut it, _)| {
         let id = it.id.clone();
         match id.as_str() {
@@ -183,6 +189,9 @@ fn run(app: &AppHandle, ids: &[String]) -> usize {
 }
 
 pub fn start(app: AppHandle, ids: Vec<String>) -> Result<(), String> {
+    if !platform::LINUX {
+        return Err(format!("Updates are Linux-only today; this {} build is a preview.", platform::name()));
+    }
     if exec::RUNNING.swap(true, Ordering::SeqCst) { return Err("a run is already in progress".into()); }
     exec::CANCEL.store(false, Ordering::SeqCst);
     std::thread::spawn(move || {

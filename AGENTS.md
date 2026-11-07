@@ -46,9 +46,12 @@ for compliance.
   (reviewed `.cargo/audit.toml` exemptions), OSV over both lockfiles, and the
   install-script pin check. Local parity: `scripts/deps.sh`.
 - **Releases are tag-driven.** A `v*` tag builds the supported platforms
-  (Linux x64 + arm64, `.deb` + AppImage) through
-  `.github/workflows/release.yml`. Windows/macOS are not supported yet; do not
-  add them to the matrix before the port exists.
+  through `.github/workflows/release.yml`: Linux x64 + arm64 (`.deb` + AppImage,
+  the full feature set), Windows x64 (`.exe`/NSIS) and macOS arm64/x64
+  (`.dmg`). Windows and macOS are **preview** builds: the UI, setup files, Git
+  and VS Code helpers work, while apt, pkexec, Flatpak and other Linux-only
+  actions stay disabled. `.github/workflows/ci.yml` compiles both preview
+  targets on every PR before a tag can be cut.
 
 ## Verify before push
 

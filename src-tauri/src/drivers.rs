@@ -1,6 +1,7 @@
 //! Driver helper: read-only GPU and Secure Boot diagnostics with steps to follow yourself.
 //! Nothing is installed or changed here: a failed graphics driver install can leave a machine without a desktop.
 use crate::system;
+use crate::platform;
 use serde::Serialize;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -233,6 +234,21 @@ pub(crate) fn advise(r: &Report) -> Vec<Advice> {
 }
 
 pub fn scan() -> Report {
+    if !platform::LINUX {
+        return Report {
+            secure_boot: "unknown".into(),
+            distro_id: std::env::consts::OS.into(),
+            distro: platform::name().into(),
+            advice: vec![Advice {
+                level: "info",
+                title: "Driver diagnostics are Linux-only today".to_string(),
+                detail: format!("DevSetup reads Linux kernel drivers, Secure Boot and apt sources. This {} build is a preview.", platform::name()),
+                steps: vec![],
+                commands: vec![],
+            }],
+            ..Default::default()
+        };
+    }
     let d = system::distro();
     let sources = read_sources();
     let smi = if system::on_path("nvidia-smi") { parse_smi(&run("timeout", &["10", "nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"])) } else { None };

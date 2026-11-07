@@ -273,18 +273,22 @@ fn prune_workflow_contract() {
 }
 
 #[test]
-fn release_workflow_is_tag_driven_and_linux_only() {
+fn release_workflow_is_tag_driven_for_every_supported_platform() {
     let w = rd(".github/workflows/release.yml");
     // Tag-driven: a v* tag is the only trigger, and it publishes to it.
     must_have(&w, "release.yml", "tags: ['v*']");
     must_have(&w, "release.yml", "contents: write");
     must_have(&w, "release.yml", "tagName: ${{ github.ref_name }}");
-    // Supported platforms only: Linux x64 + arm64, .deb + AppImage.
+    // Linux is the full build; Windows and macOS ship real previews.
     must_have(&w, "release.yml", "ubuntu-24.04");
     must_have(&w, "release.yml", "ubuntu-24.04-arm");
-    must_have(&w, "release.yml", "--bundles deb,appimage");
-    must_not_have(&w, "release.yml", "windows-latest");
-    must_not_have(&w, "release.yml", "macos-latest");
+    must_have(&w, "release.yml", "bundles: deb,appimage");
+    must_have(&w, "release.yml", "windows-latest");
+    must_have(&w, "release.yml", "macos-15");
+    must_have(&w, "release.yml", "macos-15-intel");
+    must_have(&w, "release.yml", "bundles: nsis");
+    must_have(&w, "release.yml", "bundles: app,dmg");
+    must_have(&w, "release.yml", "Windows and macOS (preview)");
     // The tag must match the version that is actually built.
     must_have(&w, "release.yml", "does not match tauri.conf.json");
     // Serialized jobs: one release, created once, then asset uploads.
@@ -295,6 +299,16 @@ fn release_workflow_is_tag_driven_and_linux_only() {
     must_have(&w, "release.yml", "pnpm/action-setup@v6");
     must_have(&w, "release.yml", "actions/setup-node@v7");
     must_have(&w, "release.yml", "dtolnay/rust-toolchain@stable");
+}
+
+#[test]
+fn ci_compiles_the_preview_targets_before_a_release() {
+    let w = rd(".github/workflows/ci.yml");
+    must_have(&w, "ci.yml", "pnpm run check");
+    must_have(&w, "ci.yml", "windows-latest");
+    must_have(&w, "ci.yml", "macos-15");
+    must_have(&w, "ci.yml", "cargo check --manifest-path src-tauri/Cargo.toml");
+    must_have(&w, "ci.yml", "contents: read");
 }
 
 #[test]
@@ -420,6 +434,9 @@ fn agents_md_carries_the_hard_rules_inline() {
         "latest stable",
         "tag-driven",
         "Linux x64 + arm64",
+        "Windows x64",
+        "macOS arm64/x64",
+        "preview",
     ] {
         must_have(&a, "AGENTS.md", rule);
     }

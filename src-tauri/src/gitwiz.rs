@@ -2,10 +2,9 @@
 //! Only public keys are ever read. Values from the UI are validated, passed as arguments (never through a shell),
 //! and key paths must be public keys directly inside ~/.ssh.
 use crate::exec::{self, cancelled, step, stream};
-use crate::system;
+use crate::{platform, system};
 use serde::Serialize;
 use std::io::Write;
-use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::Ordering;
@@ -125,7 +124,7 @@ pub fn state() -> GitState {
     }
     if s.gh_installed {
         // `gh auth status` exits non-zero when signed out and prints to stdout or stderr depending on the version.
-        let text = match run_text(Command::new("timeout").args(["10", "gh", "auth", "status"])) { Ok(t) | Err(t) => t };
+        let text = match run_text(&mut platform::timeout(10, "gh", &["auth", "status"])) { Ok(t) | Err(t) => t };
         s.gh_user = parse_gh_user(&text);
     }
     if s.ssh_installed { s.keys = list_keys(); }
@@ -149,7 +148,7 @@ pub fn generate_key(email: &str, passphrase: &str) -> Result<String, String> {
     if !valid_email(email.trim()) { return Err("Enter a valid email address first (it becomes the key comment).".into()); }
     if passphrase.len() > 200 || passphrase.chars().any(|c| c.is_control()) { return Err("The passphrase cannot contain line breaks.".into()); }
     let dir = ssh_dir()?;
-    std::fs::DirBuilder::new().mode(0o700).recursive(true).create(&dir).map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
+    platform::private_dir(&dir).map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
     let key = dir.join("id_ed25519");
     if key.exists() || key.with_extension("pub").exists() || dir.join("id_ed25519.pub").exists() {
         return Err(format!("A key already exists at {}. It was not changed.", key.display()));
@@ -160,15 +159,14 @@ pub fn generate_key(email: &str, passphrase: &str) -> Result<String, String> {
 }
 
 pub fn test_ssh() -> SshTest {
-    let r = run_text(Command::new("timeout").args(["20", "ssh", "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-T", "git@github.com"]));
+    let r = run_text(&mut platform::timeout(20, "ssh", &["-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-T", "git@github.com"]));
     // GitHub closes the connection after greeting you, so ssh exits non-zero even on success.
     let text = match r { Ok(t) | Err(t) => t };
     SshTest { ok: text.contains("successfully authenticated"), output: text }
 }
 
 fn host_title() -> String {
-    let h = std::fs::read_to_string("/etc/hostname").unwrap_or_default();
-    let h: String = h.trim().chars().filter(|c| c.is_ascii_alphanumeric() || "-_.".contains(*c)).take(40).collect();
+    let h: String = platform::hostname().chars().filter(|c| c.is_ascii_alphanumeric() || "-_.".contains(*c)).take(40).collect();
     format!("{} (DevSetup)", if h.is_empty() { "my computer" } else { &h })
 }
 
@@ -193,7 +191,7 @@ pub fn set_signing(enable: bool, key: &str, email: &str) -> Result<(), String> {
     let keyfile = pub_key_in(&ssh_dir()?, key)?;
     let public = std::fs::read_to_string(&keyfile).map_err(|e| e.to_string())?;
     let line = signers_line(email, public.lines().next().unwrap_or("")).ok_or_else(|| "That does not look like a public key.".to_string())?;
-    let signers = system::home().ok_or("no home folder")?.join(".config/git/allowed_signers");
+    let signers = system::config_dir().ok_or("no config folder")?.join("git/allowed_signers");
     if let Some(d) = signers.parent() { std::fs::create_dir_all(d).map_err(|e| e.to_string())?; }
     let existing = std::fs::read_to_string(&signers).unwrap_or_default();
     if !existing.lines().any(|l| l.trim() == line) {
@@ -214,7 +212,7 @@ pub fn open_url(which: &str) -> Result<(), String> {
         "github-ssh" => "https://github.com/settings/ssh/new",
         _ => return Err("unknown page".into()),
     };
-    Command::new("xdg-open").arg(url).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map(|_| ()).map_err(|e| format!("Could not open the browser: {e}"))
+    platform::open_url(url)
 }
 
 /// Signs in with the browser (device code). The one-time code shows up in the log stream.
@@ -266,6 +264,7 @@ mod tests {
         assert_eq!(parse_fingerprint("256 SHA256:AbCd me@example.com (ED25519)"), "SHA256:AbCd");
     }
 
+    #[cfg(unix)]
     #[test]
     fn key_paths_must_be_public_keys_directly_in_ssh_dir() {
         let base = std::env::temp_dir().join(format!("devsetup-ssh-{}", std::process::id()));

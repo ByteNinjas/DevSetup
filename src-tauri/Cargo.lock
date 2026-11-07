@@ -562,8 +562,9 @@ dependencies = [
 
 [[package]]
 name = "devsetup"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
+ "getrandom 0.3.4",
  "libc",
  "serde",
  "serde_json",

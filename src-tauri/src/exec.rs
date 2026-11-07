@@ -2,19 +2,31 @@
 //! Cancel stops user-level steps (their whole process group). The apt step runs as root
 //! and cannot be interrupted safely, so cancel takes effect after it finishes.
 use crate::manifest::{self, Manifest, Method, Tool};
-use crate::{state, system};
+use crate::{platform, state, system};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Read};
-use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use tauri::{AppHandle, Emitter};
+
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 
 pub(crate) static RUNNING: AtomicBool = AtomicBool::new(false);
 pub(crate) static CANCEL: AtomicBool = AtomicBool::new(false);
 /// Process group of the user-level step that is running now (0 = none).
 static CHILD_PGID: AtomicI32 = AtomicI32::new(0);
+
+#[cfg(unix)]
+const SIGTERM: i32 = libc::SIGTERM;
+#[cfg(unix)]
+const SIGKILL: i32 = libc::SIGKILL;
+#[cfg(not(unix))]
+const SIGTERM: i32 = 0;
+#[cfg(not(unix))]
+const SIGKILL: i32 = 0;
+
 
 #[derive(Clone, Serialize)] struct Log { id: String, stream: &'static str, line: String }
 #[derive(Clone, Serialize)] struct Step { id: String, state: &'static str, message: String }
@@ -30,8 +42,15 @@ pub(crate) fn step(app: &AppHandle, id: &str, state: &'static str, message: &str
 }
 
 fn kill_group(pg: i32, sig: i32) {
-    // SAFETY: plain syscall; a negative pid addresses the whole process group.
-    unsafe { libc::kill(-pg, sig); }
+    #[cfg(unix)]
+    {
+        // SAFETY: plain syscall; a negative pid addresses the whole process group.
+        unsafe { libc::kill(-pg, sig); }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (pg, sig);
+    }
 }
 
 /// Asks the running install to stop. Safe to call at any time.
@@ -39,10 +58,10 @@ pub fn cancel() {
     CANCEL.store(true, Ordering::SeqCst);
     let pg = CHILD_PGID.load(Ordering::SeqCst);
     if pg > 0 {
-        kill_group(pg, libc::SIGTERM);
+        kill_group(pg, SIGTERM);
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_secs(3));
-            if CHILD_PGID.load(Ordering::SeqCst) == pg { kill_group(pg, libc::SIGKILL); }
+            if CHILD_PGID.load(Ordering::SeqCst) == pg { kill_group(pg, SIGKILL); }
         });
     }
 }
@@ -64,6 +83,7 @@ fn pump<R: Read + Send + 'static>(app: &AppHandle, id: &str, stream: &'static st
 pub(crate) fn stream(app: &AppHandle, id: &str, mut cmd: Command, group: bool) -> bool {
     if group && cancelled() { return false; }
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(unix)]
     if group { cmd.process_group(0); }
     let mut child = match cmd.spawn() {
         Ok(c) => c,
@@ -72,7 +92,7 @@ pub(crate) fn stream(app: &AppHandle, id: &str, mut cmd: Command, group: bool) -
     let pg = child.id() as i32;
     if group {
         CHILD_PGID.store(pg, Ordering::SeqCst);
-        if cancelled() { kill_group(pg, libc::SIGTERM); } // cancel arrived just before the store
+        if cancelled() { kill_group(pg, SIGTERM); } // cancel arrived just before the store
     }
     let mut hs = vec![];
     if let Some(o) = child.stdout.take() { hs.push(pump(app, id, "stdout", o)); }
@@ -89,7 +109,7 @@ fn child_path() -> String {
         for d in [".local/bin", ".local/share/mise/shims", ".cargo/bin", ".bun/bin"] { dirs.push(h.join(d).to_string_lossy().into_owned()); }
     }
     if let Ok(p) = std::env::var("PATH") { dirs.push(p); }
-    dirs.join(":")
+    dirs.join(&platform::path_separator().to_string())
 }
 
 /// `sh -c <script> sh <args...>`: values reach the script as "$1", "$2", never spliced into the text.
@@ -323,6 +343,9 @@ fn run(app: &AppHandle, install: Vec<String>, remove: Vec<String>, strict: bool)
 }
 
 pub fn start(app: AppHandle, install: Vec<String>, remove: Vec<String>, strict: bool) -> Result<(), String> {
+    if !platform::LINUX {
+        return Err(format!("Installing tools is not supported on {} yet. The Linux .deb and AppImage are the full-featured builds.", platform::name()));
+    }
     if RUNNING.swap(true, Ordering::SeqCst) { return Err("a run is already in progress".into()); }
     CANCEL.store(false, Ordering::SeqCst);
     std::thread::spawn(move || {
@@ -334,7 +357,7 @@ pub fn start(app: AppHandle, install: Vec<String>, remove: Vec<String>, strict: 
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;

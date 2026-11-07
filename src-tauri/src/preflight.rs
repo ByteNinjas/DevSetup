@@ -1,5 +1,5 @@
 //! Pre-flight checks shown in the review screen before anything is installed.
-use crate::{exec, manifest::{self, Method, Tool}, system};
+use crate::{exec, manifest::{self, Method, Tool}, platform, system};
 use serde::Serialize;
 use std::collections::BTreeSet;
 use std::net::{TcpStream, ToSocketAddrs};
@@ -79,6 +79,14 @@ pub(crate) fn free_space(path: &str) -> Option<(String, u64)> {
 }
 
 pub fn run(install: Vec<String>, remove: Vec<String>, strict: bool) -> Vec<Check> {
+    if !platform::LINUX {
+        return vec![check(
+            "platform",
+            "Platform",
+            "fail",
+            format!("Installing tools on {} is not supported yet. Use the Linux .deb or AppImage for installs; this build can still browse tools and save setup files.", platform::name()),
+        )];
+    }
     let m = manifest::load();
     let apt = system::apt_installed();
     let to_install = exec::resolve(&m, &install, &apt);
