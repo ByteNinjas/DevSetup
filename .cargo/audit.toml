@@ -1,7 +1,7 @@
 # cargo-audit policy. It mirrors the reviewed exemptions in
 # .osv-scanner.toml: advisory-scoped ignores cannot hide a future advisory
 # (each one gets a new id), and the target filters keep the audit focused on
-# the Linux platforms DevSetup supports. Policy: CONVENTIONS.md,
+# the platforms DevSetup ships. Policy: CONVENTIONS.md,
 # "Dependency exceptions".
 [advisories]
 ignore = [
@@ -11,5 +11,5 @@ ignore = [
 ]
 
 [target]
-os = ["linux"]
+os = ["linux", "macos", "windows"]
 arch = ["x86_64", "aarch64"]

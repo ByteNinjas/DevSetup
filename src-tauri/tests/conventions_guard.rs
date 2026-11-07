@@ -5,6 +5,10 @@
 //! fails — in CI (guard workflows run on trunks, deps-audit on shared files)
 //! and locally (the pre-push gate runs `pnpm run check`, which runs these).
 
+// The hooks and permission bits under test are Unix-only. Excluding the whole
+// crate keeps `cargo test` compiling on Windows preview builds.
+#![cfg(unix)]
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -307,6 +311,7 @@ fn ci_compiles_the_preview_targets_before_a_release() {
     must_have(&w, "ci.yml", "pnpm run check");
     must_have(&w, "ci.yml", "windows-latest");
     must_have(&w, "ci.yml", "macos-15");
+    must_have(&w, "ci.yml", "macos-15-intel");
     must_have(&w, "ci.yml", "cargo check --manifest-path src-tauri/Cargo.toml");
     must_have(&w, "ci.yml", "contents: read");
 }
