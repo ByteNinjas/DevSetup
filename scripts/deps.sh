@@ -28,7 +28,13 @@ elif [ -n "${1:-}" ]; then
 fi
 
 OSV_VERSION=v2.7.0
-OSV_SHA256=160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b
+OSV_SHA256_AMD64=160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b
+OSV_SHA256_ARM64=4061ef4c021ed3c47f203b818f337e351336cc5cd67c0274fc36bd1dfc728dd7
+case "$(uname -m)" in
+    x86_64|amd64) OSV_ASSET=linux_amd64; OSV_SHA256="$OSV_SHA256_AMD64" ;;
+    aarch64|arm64) OSV_ASSET=linux_arm64; OSV_SHA256="$OSV_SHA256_ARM64" ;;
+    *) fail "deps.sh: unsupported architecture $(uname -m)" ;;
+esac
 
 if [ "$offline" -eq 1 ]; then
     echo "deps.sh: --offline — skipped osv-scanner, cargo audit, pnpm audit and pin:check."
@@ -42,8 +48,8 @@ command -v pnpm >/dev/null 2>&1 \
 tmp_dir=/tmp/opencode/devsetup-osv-scanner
 mkdir -p "$tmp_dir" || fail "deps.sh: cannot create $tmp_dir"
 curl -fsSL -o "$tmp_dir/osv-scanner-bin" \
-    "https://github.com/google/osv-scanner/releases/download/${OSV_VERSION}/osv-scanner_linux_amd64" \
-    || fail "deps.sh: could not download osv-scanner ${OSV_VERSION}"
+    "https://github.com/google/osv-scanner/releases/download/${OSV_VERSION}/osv-scanner_${OSV_ASSET}" \
+    || fail "deps.sh: could not download osv-scanner ${OSV_VERSION} for $(uname -m)"
 printf '%s  %s\n' "$OSV_SHA256" "$tmp_dir/osv-scanner-bin" | sha256sum -c - \
     || fail "deps.sh: osv-scanner checksum mismatch — refusing the unexpected binary"
 chmod +x "$tmp_dir/osv-scanner-bin"

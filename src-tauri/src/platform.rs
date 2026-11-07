@@ -76,6 +76,20 @@ pub fn open_url(url: &str) -> Result<(), String> {
         .spawn().map(|_| ()).map_err(|e| format!("Could not open the browser: {e}"))
 }
 
+/// Builds a command for `program`. Windows shell shims (`.cmd`/`.bat`) are
+/// wrapped in `cmd /C` because `CreateProcess` cannot run them directly.
+pub fn command(program: &str) -> Command {
+    #[cfg(target_os = "windows")]
+    {
+        if program.ends_with(".cmd") || program.ends_with(".bat") {
+            let mut c = Command::new("cmd");
+            c.arg("/C").arg(program);
+            return c;
+        }
+    }
+    Command::new(program)
+}
+
 /// A command wrapped in `timeout` where the platform has one. macOS and
 /// Windows run the command directly; their Docker/SSH clients have their own
 /// timeouts.
@@ -89,7 +103,7 @@ pub fn timeout(secs: u32, program: &str, args: &[&str]) -> Command {
     #[cfg(not(target_os = "linux"))]
     {
         let _ = secs;
-        let mut c = Command::new(program);
+        let mut c = command(program);
         c.args(args);
         c
     }
@@ -152,4 +166,64 @@ pub fn path_separator() -> char {
     { ';' }
     #[cfg(not(target_os = "windows"))]
     { ':' }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn random_bytes_fill_the_buffer_and_differ() {
+        let mut a = [0u8; 32];
+        let mut b = [0u8; 32];
+        random_bytes(&mut a).unwrap();
+        random_bytes(&mut b).unwrap();
+        assert!(a.iter().any(|&x| x != 0));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn path_separator_matches_the_platform() {
+        #[cfg(target_os = "windows")]
+        assert_eq!(path_separator(), ';');
+        #[cfg(not(target_os = "windows"))]
+        assert_eq!(path_separator(), ':');
+    }
+
+    #[test]
+    fn executable_extensions_match_the_platform() {
+        #[cfg(target_os = "windows")]
+        assert_eq!(executable_extensions(), [".exe", ".cmd", ".bat", ".com"].as_slice());
+        #[cfg(not(target_os = "windows"))]
+        assert!(executable_extensions().is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_paths_are_owner_only() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("devsetup-platform-{}-private", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        private_dir(&dir).unwrap();
+        assert_eq!(std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777, 0o700);
+        let file = dir.join("secret");
+        let mut f = private_file(&file).unwrap();
+        f.write_all(b"secret").unwrap();
+        assert_eq!(std::fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn is_executable_checks_the_mode_bit() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = std::env::temp_dir().join(format!("devsetup-platform-{}-exec", std::process::id()));
+        std::fs::write(&path, b"#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(!is_executable(&path));
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(is_executable(&path));
+        std::fs::remove_file(&path).unwrap();
+    }
 }
