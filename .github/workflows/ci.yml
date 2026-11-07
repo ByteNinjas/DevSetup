@@ -76,6 +76,8 @@ jobs:
             label: Windows x64 preview
           - runner: macos-15
             label: macOS arm64 preview
+          - runner: macos-15-intel
+            label: macOS x64 preview
     steps:
       - name: Checkout
         uses: actions/checkout@v7

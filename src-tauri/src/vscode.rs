@@ -1,9 +1,8 @@
 //! VS Code extension packs per role. Extensions are installed through the editor's own command line,
 //! one at a time. The UI only sends extension ids; each one must be listed in manifest/extensions.yaml.
 use crate::exec::{self, cancelled, step, stream};
-use crate::system;
+use crate::{platform, system};
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter};
 
@@ -56,6 +55,12 @@ fn editor_args(d: &EditorDef, extra: &[&str]) -> (String, Vec<String>) {
     }
 }
 
+/// The real path of the editor's CLI when it is on PATH. Windows resolves the
+/// `code.cmd` shim here, which `Command::new("code")` cannot run.
+fn resolved_program(program: &str) -> String {
+    system::find_in_path(program).map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| program.to_string())
+}
+
 /// `publisher.name`: letters, digits, dots and dashes only, so an id can never be mistaken for an option.
 fn valid_ext_id(s: &str) -> bool {
     let Some((publisher, name)) = s.split_once('.') else { return false };
@@ -72,7 +77,9 @@ fn find_ext<'a>(packs: &'a [Pack], id: &str) -> Option<&'a Ext> {
 
 fn installed_extensions(d: &EditorDef) -> Vec<String> {
     let (program, args) = editor_args(d, &["--list-extensions"]);
-    let out = Command::new("timeout").arg("30").arg(program).args(args).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output();
+    let program = resolved_program(&program);
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let out = platform::timeout(30, &program, &arg_refs).stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output();
     out.map(|o| String::from_utf8_lossy(&o.stdout).lines().map(|l| l.trim().to_string()).filter(|l| valid_ext_id(l)).collect()).unwrap_or_default()
 }
 
@@ -111,7 +118,7 @@ pub fn start_install(app: AppHandle, editor: String, ids: Vec<String>) -> Result
             if cancelled() { step(&app, &x.id, "cancelled", ""); continue; }
             step(&app, &x.id, "running", "");
             let (program, args) = editor_args(def, &["--install-extension", x.id.as_str()]);
-            let mut cmd = Command::new(program);
+            let mut cmd = platform::command(&resolved_program(&program));
             cmd.args(args);
             if stream(&app, &x.id, cmd, true) { step(&app, &x.id, "done", ""); }
             else if cancelled() { step(&app, &x.id, "cancelled", "stopped"); }

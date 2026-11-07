@@ -115,7 +115,7 @@ Legend: ✅ available · 🚧 partly done · 🗓 planned. Full detail lives in 
 | | Feature | What it does |
 |---|---|---|
 | ✅ | **Stacks** | Starts disposable Docker services for one project: Redis, PostgreSQL, MySQL, MongoDB, RabbitMQ, MinIO and Mailpit, plus ready-made combos. |
-| ✅ | **Local-only by design** | Every published port is bound to `127.0.0.1`; each stack gets a random password in a private `0600` file. |
+| ✅ | **Local-only by design** | Every published port is bound to `127.0.0.1`; each stack gets a random password in a private file (`0600` on Unix, the user profile's ACL on Windows). |
 | ✅ | **Packages** | Tag-driven releases: `.deb` (recommended) and AppImage for Linux x64/arm64, NSIS `.exe` for Windows x64, and `.dmg` for macOS arm64/x64. Windows and macOS are previews. |
 | 🗓 | **Later** | `devsetup apply devsetup.yaml`, Fedora/Arch support, full Windows/macOS parity, signed remote manifest updates, version pickers and sudo installers. |
 
@@ -190,7 +190,7 @@ flowchart LR
 - **The root helper is deliberately narrow.** `devsetup --helper apt +id -id` accepts only tool ids, looks each one up in the built-in manifest and refuses anything that is not an apt tool.
 - **Removal respects dependencies.** User-level tools are removed first, dependents before what they need. A tool is kept, with a warning, while another remaining tool still needs it.
 - **Install scripts are pinned.** A script with a `sha256` in `manifest/tools.yaml` is downloaded, hashed and refused on a mismatch. Strict mode refuses every script without a pin.
-- **Stacks never expose a service.** Ports bind to loopback, passwords are generated per stack and kept in a `0600` file, and removing a stack deletes only that stack's folder and volumes after confirmation.
+- **Stacks never expose a service.** Ports bind to loopback, passwords are generated per stack and kept in a private file (`0600` on Unix, the user profile's ACL on Windows), and removing a stack deletes only that stack's folder and volumes after confirmation.
 - **Diagnostics stay read-only.** Doctor, Drivers and Scan only read. Fixes are explicit actions with reviewed commands, not background changes.
 - **Cache cleanup is bounded.** Cache folders are emptied only inside your home folder; links are never followed and a symlinked folder is refused. Volumes, project folders and `target`/`node_modules` directories are never touched.
 
@@ -288,7 +288,7 @@ Open **Stacks** in the sidebar to start services for one project and throw them 
 
 - Pick services (Redis, PostgreSQL, MySQL, MongoDB, RabbitMQ, MinIO, Mailpit) or a combo (MERN, Django with PostgreSQL and Redis, LAMP, queue and mail testing), optionally with an admin page (RedisInsight, pgAdmin, phpMyAdmin, Mongo Express). RabbitMQ, MinIO and Mailpit have their own web pages built in.
 - DevSetup writes a compose file under `~/.local/share/devsetup/stacks/<name>/` and runs `docker compose up -d` with the project name `devsetup-<name>`. Services and images are defined in `manifest/stacks.yaml`.
-- **Local only:** every published port binds to `127.0.0.1`. A random password is generated per stack and kept in a private (`0600`) file. A busy port, or one used by another stack, is skipped in favour of the next free one.
+- **Local only:** every published port binds to `127.0.0.1`. A random password is generated per stack and kept in a private (`0600` on Unix; the user profile on Windows) file. A busy port, or one used by another stack, is skipped in favour of the next free one.
 - Each stack shows connection strings with Copy buttons, links to open its web pages and `.env` lines to paste into a project (for example `POSTGRES_URL`).
 - **Start, Stop, Destroy.** Destroy runs `docker compose down -v --remove-orphans` and then deletes the stack's folder. It asks first, because the volumes — and the data in them — are deleted too. A stack that fails to start is cleaned up again.
 - Needs Docker running, you in the `docker` group, and Docker Compose. Doctor checks both Docker conditions.
