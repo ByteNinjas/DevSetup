@@ -52,6 +52,16 @@ for compliance.
   and VS Code helpers work, while apt, pkexec, Flatpak and other Linux-only
   actions stay disabled. `.github/workflows/ci.yml` compiles both preview
   targets on every PR before a tag can be cut.
+- **App self-update is signed.** The updater public key is committed in
+  `src-tauri/tauri.conf.json`; the private key and password exist only as the
+  `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` GitHub
+  secrets. Never commit or print them. `latest.json` is generated and verified
+  by `scripts/latest-json.sh`, never hand-edited. A local build without the key
+  uses `pnpm tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'`.
+- **Releases publish only after signatures verify.** The matrix builds into a
+  draft; a final job generates and verifies `latest.json` from the signed
+  assets, then publishes and marks the release latest. Never publish a draft by
+  hand.
 
 ## Verify before push
 

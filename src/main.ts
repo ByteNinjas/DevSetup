@@ -1,5 +1,5 @@
 import "./style.css";
-import { api, Tool, Role, Plan, Imported, Scan, CleanItem, UpdateItem, Finding, FixInfo, GitState, ShellState, ShOpts, VsState, DriverReport, StacksState } from "./api";
+import { api, Tool, Role, Plan, Imported, Scan, CleanItem, UpdateItem, Finding, FixInfo, GitState, ShellState, ShOpts, VsState, DriverReport, StacksState, AppUpdateInfo, AppUpdateProgress, AppUpdateState } from "./api";
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
 const el = (tag: string, cls = "", text = "") => { const e = document.createElement(tag); e.className = cls; e.textContent = text; return e; };
@@ -458,6 +458,174 @@ function startUpdate(ids: string[]) {
 }
 $("#upd-go").onclick = () => { void startUpdate([...updOn]); };
 $("#upd-rescan").onclick = () => { void loadUpdates(); };
+
+// ---- app update (self-update) ----
+let appState: AppUpdateState | null = null;
+let appFound: AppUpdateInfo | null = null;
+let appChecking = false, appInstalling = false;
+let appError = "", appNote = "";
+let appProgress: AppUpdateProgress | null = null;
+
+const kindNote = (kind: string) => {
+  switch (kind) {
+    case "deb": return "Installing the .deb replaces the package for all users, so your system will ask for your administrator password.";
+    case "appimage": return "The AppImage file is replaced in place, then DevSetup restarts.";
+    case "nsis":
+    case "msi": return "Windows runs the installer, then DevSetup starts again.";
+    case "app": return "The app bundle is replaced in place, then DevSetup restarts.";
+    default: return "";
+  }
+};
+
+const kindLabel = (kind: string) => {
+  switch (kind) {
+    case "appimage": return "AppImage";
+    case "deb": return "Debian package";
+    case "rpm": return "RPM package";
+    case "nsis":
+    case "msi": return "Windows installer";
+    case "app": return "macOS app";
+    case "development": return "development build";
+    default: return kind;
+  }
+};
+
+function setUpdateBadge(on: boolean) {
+  $("#upd-badge").hidden = !on;
+  const btn = document.querySelector<HTMLButtonElement>('#nav button[data-v="updates"]');
+  if (btn) { if (on) btn.title = "An update is available"; else btn.removeAttribute("title"); }
+}
+
+function progressText(p: AppUpdateProgress) {
+  if (p.phase === "downloading") {
+    const done = fmtBytes(p.downloaded);
+    return p.total ? `Downloading update… ${done} of ${fmtBytes(p.total)}` : `Downloading update… ${done}`;
+  }
+  if (p.phase === "installing") return "Installing update…";
+  if (p.phase === "restarting") return "Restarting DevSetup…";
+  if (p.phase === "checking") return "Checking for updates…";
+  return p.message || "Update failed.";
+}
+
+function setProgress(p: AppUpdateProgress | null) {
+  const wrap = document.querySelector<HTMLElement>("#app-upd-progress");
+  const bar = document.querySelector<HTMLElement>("#app-upd-bar");
+  const status = document.querySelector<HTMLElement>("#app-upd-status");
+  if (!wrap || !bar || !status) return;
+  if (!p) { wrap.hidden = true; bar.style.width = "0"; return; }
+  wrap.hidden = false;
+  const pct = p.phase === "downloading" && p.total ? Math.min(100, (p.downloaded / p.total) * 100) : p.phase === "checking" ? 0 : 100;
+  bar.style.width = `${pct}%`;
+  const track = wrap.querySelector<HTMLElement>(".progress");
+  if (track) {
+    track.setAttribute("aria-valuenow", String(Math.round(pct)));
+    if (p.total) track.setAttribute("aria-valuetext", `${fmtBytes(p.downloaded)} of ${fmtBytes(p.total)}`);
+    else track.removeAttribute("aria-valuetext");
+  }
+  status.textContent = progressText(p);
+}
+
+function renderAppUpdate() {
+  const box = $("#app-upd");
+  box.hidden = false;
+  box.replaceChildren();
+  const head = el("div", "app-update-head");
+  head.append(el("b", "", appState ? `DevSetup ${appState.current}` : "DevSetup"));
+  if (appState) head.append(el("span", "tag", kindLabel(appState.kind)));
+  box.append(head);
+
+  if (!appState) { box.append(el("div", "mu", "Could not read the app version.")); return; }
+  if (!appState.canUpdate) {
+    box.append(el("div", "mu", "Self-update is only available in packaged builds. Run a released AppImage, .deb, installer or app bundle."));
+    return;
+  }
+
+  const status = el("div", "mu");
+  status.id = "app-upd-status"; status.setAttribute("role", "status"); status.setAttribute("aria-live", "polite");
+  const track = el("div", "progress");
+  track.setAttribute("role", "progressbar"); track.setAttribute("aria-valuemin", "0"); track.setAttribute("aria-valuemax", "100");
+  const bar = el("div", "progress-bar"); bar.id = "app-upd-bar"; track.append(bar);
+  const wrap = el("div", "progress-wrap"); wrap.id = "app-upd-progress"; wrap.hidden = true; wrap.append(track);
+  box.append(status, wrap);
+
+  if (appInstalling) {
+    status.textContent = appProgress ? progressText(appProgress) : "Preparing…";
+    setProgress(appProgress);
+    return;
+  }
+
+  if (appFound) {
+    box.append(el("div", "app-update-title", `Version ${appFound.version} is available`));
+    if (appFound.date) box.append(el("div", "mu", `Released ${appFound.date}`));
+    if (appFound.notes) box.append(el("div", "mu app-update-notes", appFound.notes));
+    const note = kindNote(appState.kind); if (note) box.append(el("div", "mu", note));
+    const row = el("div", "btns");
+    const install = el("button", "bt", "Install and restart") as HTMLButtonElement;
+    install.disabled = appChecking;
+    install.onclick = () => { void installAppUpdate(); };
+    const again = el("button", "b2", "Check again") as HTMLButtonElement;
+    again.disabled = appChecking;
+    again.onclick = () => { void checkAppUpdate(true); };
+    const rel = el("button", "b2", "All releases") as HTMLButtonElement;
+    rel.onclick = () => { void api.openUrl("releases").catch(() => { /* optional link */ }); };
+    row.append(install, again, rel);
+    box.append(row);
+    status.hidden = true;
+  } else {
+    status.textContent = appChecking ? "Checking for updates…" : appNote || "Checks for a newer signed release at startup.";
+    const row = el("div", "btns");
+    const check = el("button", "b2", appChecking ? "Checking…" : "Check now") as HTMLButtonElement;
+    check.disabled = appChecking;
+    check.onclick = () => { void checkAppUpdate(true); };
+    row.append(check);
+    box.append(row);
+  }
+  if (appError) box.append(el("div", "st warn", appError));
+}
+
+async function checkAppUpdate(manual: boolean) {
+  if (!appState?.canUpdate || appChecking || appInstalling) return;
+  appChecking = true;
+  appError = "";
+  renderAppUpdate();
+  try {
+    appFound = await api.appUpdateCheck();
+    setUpdateBadge(!!appFound);
+    appNote = appFound ? "" : "You are on the latest version.";
+  } catch (e) {
+    // A failed startup check stays quiet; the card still offers a manual retry.
+    if (manual) appError = String(e);
+  } finally {
+    appChecking = false;
+    renderAppUpdate();
+  }
+}
+
+async function installAppUpdate() {
+  if (!appFound || appInstalling) return;
+  appInstalling = true;
+  appError = "";
+  appProgress = { phase: "downloading", downloaded: 0, total: null, message: "" };
+  setUpdateBadge(false);
+  renderAppUpdate();
+  try {
+    await api.appUpdateInstall();
+    // Linux and macOS restart inside the command; Windows exits to the installer.
+  } catch (e) {
+    appInstalling = false;
+    appProgress = null;
+    appError = String(e);
+    setUpdateBadge(!!appFound);
+    renderAppUpdate();
+  }
+}
+
+async function initAppUpdate() {
+  try { appState = await api.appUpdateState(); }
+  catch { appState = null; }
+  renderAppUpdate();
+  if (appState?.canUpdate) void checkAppUpdate(false);
+}
 
 // ---- doctor ----
 let docItems: Finding[] = [], docLoaded = false;
@@ -962,6 +1130,20 @@ document.querySelectorAll<HTMLButtonElement>("#nav button").forEach(b => { b.onc
 
 
 initTheme();
+void api.onAppUpdateProgress(p => {
+  if (!appInstalling) return;
+  if (p.phase === "failed") {
+    appInstalling = false;
+    appProgress = null;
+    appError = p.message || "The update failed.";
+    setUpdateBadge(!!appFound);
+    renderAppUpdate();
+    return;
+  }
+  appProgress = p;
+  setProgress(p);
+});
+void initAppUpdate();
 (async () => {
   const [sys, m, t] = await Promise.all([api.system(), api.manifest(), api.tools()]);
   $("#sys").textContent = sys.name; tools = t;

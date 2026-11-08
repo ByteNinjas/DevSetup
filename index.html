@@ -10,7 +10,7 @@
     <nav id="nav" aria-label="Sections">
       <button data-v="setup" aria-current="page">Setup</button>
       <button data-v="clean">Cleaner</button>
-      <button data-v="updates">Updates</button>
+      <button data-v="updates">Updates<span id="upd-badge" class="badge" title="Update available" hidden></span></button>
       <button data-v="doctor">Doctor</button>
       <button data-v="git">Git and GitHub</button>
       <button data-v="shell">Shell setup</button>
@@ -49,6 +49,7 @@
   </main>
   <main id="v-updates" hidden>
     <div><h1>Updates</h1><div class="mu">Update system packages and the tools you installed. Nothing changes until you press Update.</div></div>
+    <div id="app-upd" class="card app-update" hidden></div>
     <div class="bar"><span id="upd-sum" class="mu"></span><span class="ctl"><button id="upd-rescan" class="b2">Check again</button></span></div>
     <div id="upd-list" class="grid"></div>
     <footer><span class="mu">Each item updates everything of its kind on this machine, not only tools from DevSetup's list.</span><button class="bt" id="upd-go" disabled>Update selected</button></footer>

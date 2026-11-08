@@ -54,21 +54,61 @@ fn search_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-/// First executable called `cmd` in PATH or in the folders DevSetup installs tools into.
-pub fn find_in_path(cmd: &str) -> Option<PathBuf> {
-    let extensions = platform::executable_extensions();
-    for dir in search_dirs() {
-        let direct = dir.join(cmd);
-        if platform::is_executable(&direct) { return Some(direct); }
-        for ext in extensions {
-            let candidate = dir.join(format!("{cmd}{ext}"));
+/// Candidate file names for `cmd` in one directory, in lookup order.
+///
+/// Windows runs commands through their extension, so only extension-qualified
+/// names are tried there: VS Code ships both a non-runnable `code` shell script
+/// and the real `code.cmd` shim, and resolution must pick the shim. A command
+/// that already carries an extension is used as is.
+fn candidate_names(cmd: &str, extensions: &[&str]) -> Vec<String> {
+    if extensions.is_empty() || std::path::Path::new(cmd).extension().is_some() {
+        return vec![cmd.to_string()];
+    }
+    extensions.iter().map(|ext| format!("{cmd}{ext}")).collect()
+}
+
+fn find_in_dirs(dirs: &[PathBuf], cmd: &str) -> Option<PathBuf> {
+    let names = candidate_names(cmd, platform::executable_extensions());
+    for dir in dirs {
+        for name in &names {
+            let candidate = dir.join(name);
             if platform::is_executable(&candidate) { return Some(candidate); }
         }
     }
     None
 }
 
+/// First executable called `cmd` in PATH or in the folders DevSetup installs tools into.
+pub fn find_in_path(cmd: &str) -> Option<PathBuf> {
+    find_in_dirs(&search_dirs(), cmd)
+}
+
 pub fn on_path(cmd: &str) -> bool { find_in_path(cmd).is_some() }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const WINDOWS_EXTS: &[&str] = &[".exe", ".cmd", ".bat", ".com"];
+
+    #[test]
+    fn windows_candidates_skip_the_extensionless_file() {
+        let names = candidate_names("code", WINDOWS_EXTS);
+        assert_eq!(names, ["code.exe", "code.cmd", "code.bat", "code.com"]);
+        assert!(!names.iter().any(|n| n == "code"), "the extensionless Git-Bash script must never be picked");
+    }
+
+    #[test]
+    fn unix_candidates_use_the_command_verbatim() {
+        assert_eq!(candidate_names("code", &[]), ["code"]);
+    }
+
+    #[test]
+    fn qualified_commands_are_not_extended_again() {
+        assert_eq!(candidate_names("code.cmd", WINDOWS_EXTS), ["code.cmd"]);
+        assert_eq!(candidate_names("code.exe", WINDOWS_EXTS), ["code.exe"]);
+    }
+}
 
 /// Names of installed Debian/Ubuntu packages, read once from the dpkg status file.
 pub fn apt_installed() -> HashSet<String> {

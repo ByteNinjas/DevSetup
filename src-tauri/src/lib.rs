@@ -1,3 +1,4 @@
+mod app_update;
 mod clean;
 mod doctor;
 mod drivers;
@@ -204,7 +205,9 @@ fn cancel_run() { exec::cancel() }
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![get_system, get_manifest, list_tools, make_plan, run_plan, cancel_run, preflight, plan_details, export_setup, parse_setup, read_setup_file, write_setup_file, fetch_setup, scan_machine, scan_clean, run_clean, scan_updates, run_updates, scan_doctor, run_fix, git_state, git_save_identity, git_generate_key, git_test_ssh, git_add_key, git_setup_credentials, git_set_signing, open_url, gh_login, shell_state, shell_preview, shell_apply, shell_remove, set_login_shell, vscode_state, vscode_install, scan_drivers, stacks_state, stack_create, stack_action, stack_open])
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(app_update::AppUpdate::default())
+        .invoke_handler(tauri::generate_handler![get_system, get_manifest, list_tools, make_plan, run_plan, cancel_run, preflight, plan_details, export_setup, parse_setup, read_setup_file, write_setup_file, fetch_setup, scan_machine, scan_clean, run_clean, scan_updates, run_updates, scan_doctor, run_fix, git_state, git_save_identity, git_generate_key, git_test_ssh, git_add_key, git_setup_credentials, git_set_signing, open_url, gh_login, shell_state, shell_preview, shell_apply, shell_remove, set_login_shell, vscode_state, vscode_install, scan_drivers, stacks_state, stack_create, stack_action, stack_open, app_update::app_update_state, app_update::app_update_check, app_update::app_update_install])
         .run(tauri::generate_context!())
         .expect("error while running DevSetup");
 }

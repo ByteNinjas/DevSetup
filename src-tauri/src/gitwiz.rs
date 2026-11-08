@@ -210,6 +210,7 @@ pub fn open_url(which: &str) -> Result<(), String> {
     let url = match which {
         "github-device" => "https://github.com/login/device",
         "github-ssh" => "https://github.com/settings/ssh/new",
+        "releases" => "https://github.com/ByteNinjas/DevSetup/releases",
         _ => return Err("unknown page".into()),
     };
     platform::open_url(url)
