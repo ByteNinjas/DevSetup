@@ -325,9 +325,9 @@ fn release_workflow_signs_and_publishes_updater_assets() {
     must_have(&w, "release.yml", "uploadUpdaterSignatures: true");
     must_have(&w, "release.yml", "TAURI_SIGNING_PRIVATE_KEY");
     must_have(&w, "release.yml", "TAURI_SIGNING_PRIVATE_KEY_PASSWORD");
-    // Tauri signs AppImage/NSIS/.app itself; the .deb is signed by hand.
-    must_have(&w, "release.yml", "pnpm tauri signer sign --app-version");
-    must_have(&w, "release.yml", "gh release upload \"$GITHUB_REF_NAME\" \"$deb.sig\"");
+    // The Tauri CLI signs every updater bundle, including .deb; the workflow
+    // must not re-sign them by hand.
+    must_not_have(&w, "release.yml", "pnpm tauri signer sign");
     // The publish job runs after every matrix build, rebuilds latest.json
     // from the downloaded draft assets, verifies it, then publishes.
     must_have(&w, "release.yml", "needs: release");

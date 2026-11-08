@@ -122,12 +122,39 @@ All on the free plan, all payload-only or shallow-cheap:
   or by accepting the Dependabot PRs.
 - `release.yml`: tag-driven (`v*`). Serialized jobs build Linux x64 + arm64
   (`.deb` + AppImage, full feature set), Windows x64 (NSIS) and macOS arm64/x64
-  (`.dmg`) with `tauri-apps/tauri-action` and publish them to the tag's GitHub
-  release. The tag must match `tauri.conf.json` and `package.json`. Windows and
+  (`.dmg`) into a **draft** release with `tauri-apps/tauri-action`. The Tauri CLI
+  signs every updater bundle (including `.deb`) with the release minisign key
+  from the `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+  secrets, and the action uploads the `.sig` files. A final publish job
+  downloads the draft assets, generates `latest.json` with
+  `scripts/latest-json.sh`, verifies every platform entry and signature, uploads
+  it, then publishes and marks the release latest. The tag must match
+  `tauri.conf.json`, `package.json` and `src-tauri/Cargo.toml`. Windows and
   macOS are labeled previews; Linux-only actions stay disabled there.
 - `ci.yml`: every PR into `dev` or `main` runs the full Linux gate
   (`pnpm run check`) plus a `cargo check` compile of the Windows and macOS
   preview targets, so a broken port fails before a tag is pushed.
+
+### Updater signing keys
+
+- The updater **public** key is committed in `src-tauri/tauri.conf.json`
+  (`plugins.updater.pubkey`). It is not a secret.
+- The **private** key and its password exist only as the
+  `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` GitHub
+  secrets, plus an offline backup. Never commit, print, paste into an issue or
+  include them in a PR; if one lands, remove it, rotate the keypair and say so.
+- `requireSignedVersion` is on. Every updater artifact must carry a minisign
+  signature whose trusted comment names the release version, so a tampered
+  `latest.json` cannot point a new version at an older signed build.
+- `latest.json` is generated from the uploaded assets and verified before the
+  release is published. It is never hand-edited.
+- Local `pnpm tauri build` needs the key because `createUpdaterArtifacts` is on.
+  Without the key, build with
+  `pnpm tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'`.
+  Release builds always sign with the secrets.
+- Rotating the keypair requires every installed build to be replaced manually
+  once, because the old build only trusts the old key. Announce it in the
+  release body.
 
 ## Dependencies
 
