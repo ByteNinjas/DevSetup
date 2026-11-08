@@ -2,10 +2,11 @@ name: Release
 
 # Tag-driven release. Pushing a `v*` tag builds the supported bundles on
 # Linux (x64 + arm64, `.deb` + AppImage), Windows x64 (NSIS) and macOS
-# (arm64 + x64, `.app` + `.dmg`), then publishes them to that tag's GitHub
-# release. The matrix is serialized on purpose: the first job creates the
-# release, the later jobs attach their assets to the same release. Running
-# them in parallel would race several release-creation requests for one tag.
+# (arm64 + x64, `.app` + `.dmg`) into a DRAFT release. Every updater artifact
+# is signed, `latest.json` is generated from the uploaded assets and verified,
+# and only then is the release published. The matrix is serialized on purpose:
+# the first job creates the draft release, the later jobs attach their assets
+# to the same release.
 #
 # Linux is the full-featured build. Windows and macOS are real, compiling
 # previews: the UI, setup files, Git and VS Code helpers work, while apt,
@@ -97,8 +98,10 @@ jobs:
           tag="${GITHUB_REF_NAME#v}"
           app="$(jq -r .version src-tauri/tauri.conf.json)"
           pkg="$(jq -r .version package.json)"
-          if [ "$tag" != "$app" ] || [ "$tag" != "$pkg" ]; then
-            echo "::error::Tag v$tag does not match tauri.conf.json ($app) and package.json ($pkg). Bump both versions before tagging."
+          cargo="$(cargo metadata --manifest-path src-tauri/Cargo.toml --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "devsetup") | .version')"
+          if [ "$tag" != "$app" ] || [ "$tag" != "$pkg" ] || [ "$tag" != "$cargo" ]; then
+            echo "::error::Tag v$tag does not match tauri.conf.json ($app), package.json ($pkg) and src-tauri/Cargo.toml ($cargo). Bump all three versions before tagging."
             exit 1
           fi
           echo "Tag v$tag matches the app version - OK."
@@ -106,15 +109,23 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build bundles and publish the release
+      - name: Build bundles into the draft release
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: DevSetup ${{ github.ref_name }}
           releaseBody: |
             DevSetup ${{ github.ref_name }}.
+
+            **Updates**
+            - Builds from v0.0.3 onward check for a signed update on startup and from the
+              Updates card, then download, verify and install it in place.
+            - Releases before v0.0.3 have no updater and must install this release manually once.
+            - The `.sig` files are updater signatures; manual installs only need the bundle.
 
             **Linux (full feature set)**
             - `*.deb` - recommended on Debian/Ubuntu (installs `/usr/bin/devsetup` and the polkit policy)
@@ -125,11 +136,76 @@ jobs:
             - Windows: `*.exe` (NSIS, current user). Unsigned, so SmartScreen may warn.
             - macOS: `*.dmg` (arm64 and x64). Unsigned, so Gatekeeper may block the first launch
               (right-click the app and choose Open, or allow it in System Settings).
-            - These builds compile and run, but installs, cleanup, updates, Doctor, drivers and
-              shell login changes are Linux-only and stay disabled in the preview.
+            - These builds compile and run, but installs, cleanup, Doctor, drivers and shell
+              login changes are Linux-only and stay disabled in the preview.
 
             Verify the file matches your platform and architecture before installing. Full
             install and usage notes live in the [README](https://github.com/${{ github.repository }}#readme).
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
+          uploadUpdaterJson: false
+          uploadUpdaterSignatures: true
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      - name: Sign the Debian packages for the updater
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          shopt -s nullglob
+          debs=(src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb)
+          if [ "${#debs[@]}" -eq 0 ]; then
+            echo "::error::No .deb bundles were produced for ${{ matrix.target }}."
+            exit 1
+          fi
+          for deb in "${debs[@]}"; do
+            pnpm tauri signer sign --app-version "$version" "$deb"
+            gh release upload "$GITHUB_REF_NAME" "$deb.sig" --clobber
+          done
+
+  publish:
+    name: Publish the release
+    needs: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout the tagged commit
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Download the draft assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          rm -rf release-assets
+          mkdir release-assets
+          gh release download "$GITHUB_REF_NAME" --dir release-assets --clobber
+
+      - name: Generate and verify latest.json
+        run: |
+          set -euo pipefail
+          scripts/latest-json.sh generate release-assets \
+            --version "${GITHUB_REF_NAME#v}" \
+            --tag "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            > latest.json
+          scripts/latest-json.sh verify release-assets latest.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --tag "$GITHUB_REF_NAME"
+
+      - name: Upload latest.json and publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "$GITHUB_REF_NAME" latest.json --clobber
+          # Publish first, then mark latest: the API refuses to make a draft latest.
+          gh release edit "$GITHUB_REF_NAME" --draft=false
+          gh release edit "$GITHUB_REF_NAME" --latest
