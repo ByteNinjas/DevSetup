@@ -5,13 +5,17 @@
 //! fails — in CI (guard workflows run on trunks, deps-audit on shared files)
 //! and locally (the pre-push gate runs `pnpm run check`, which runs these).
 
-// The hooks and permission bits under test are Unix-only. Excluding the whole
-// crate keeps `cargo test` compiling on Windows preview builds.
-#![cfg(unix)]
+// The hooks and permission bits under test are Unix-only, so those tests are
+// gated individually. The file-content contracts run everywhere, including
+// Windows preview builds (`cargo check --all-targets` compiles them there).
 
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+#[cfg(unix)]
+use std::path::Path;
+#[cfg(unix)]
 use std::process::{Command, Stdio};
 
 /// The repository root (this Cargo manifest lives in `<repo>/src-tauri`).
@@ -42,6 +46,7 @@ fn must_not_have(text: &str, what: &str, needle: &str) {
 
 // ---------- hooks ----------
 
+#[cfg(unix)]
 #[test]
 fn hooks_exist_parse_and_are_executable() {
     for name in ["pre-push", "commit-msg", "post-merge"] {
@@ -75,6 +80,7 @@ fn pre_push_contract() {
     must_have(&h, "pre-push", "pnpm run check");
 }
 
+#[cfg(unix)]
 #[test]
 fn pre_push_refuses_trunk_payloads() {
     let hook = root().join(".githooks/pre-push");
@@ -113,6 +119,7 @@ fn pre_push_refuses_trunk_payloads() {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn pre_push_lets_task_branches_through_the_trunk_check() {
     // A task branch payload must NOT trip the trunk regex (boundary check:
@@ -157,6 +164,7 @@ fn pre_push_lets_task_branches_through_the_trunk_check() {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn commit_msg_contract() {
     let hook = root().join(".githooks/commit-msg");
@@ -205,6 +213,7 @@ fn commit_msg_contract() {
 }
 
 /// Runs a hook with a message file argument; returns (status, stderr).
+#[cfg(unix)]
 fn run_bash(hook: &Path, msg_file: &Path) -> (std::process::ExitStatus, String) {
     let out = Command::new("bash")
         .arg(hook)
@@ -215,6 +224,7 @@ fn run_bash(hook: &Path, msg_file: &Path) -> (std::process::ExitStatus, String) 
 }
 
 /// A millisecond-ish tick so parallel test files do not collide.
+#[cfg(unix)]
 fn chronoless() -> u128 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos() % 1_000_000
@@ -306,13 +316,212 @@ fn release_workflow_is_tag_driven_for_every_supported_platform() {
 }
 
 #[test]
+fn release_workflow_signs_and_publishes_updater_assets() {
+    let w = rd(".github/workflows/release.yml");
+    // The matrix builds into a draft, so latest.json can be generated from
+    // every signed asset before users see the release.
+    must_have(&w, "release.yml", "releaseDraft: true");
+    must_have(&w, "release.yml", "uploadUpdaterJson: false");
+    must_have(&w, "release.yml", "uploadUpdaterSignatures: true");
+    must_have(&w, "release.yml", "TAURI_SIGNING_PRIVATE_KEY");
+    must_have(&w, "release.yml", "TAURI_SIGNING_PRIVATE_KEY_PASSWORD");
+    // The Tauri CLI signs every updater bundle, including .deb; the workflow
+    // must not re-sign them by hand.
+    must_not_have(&w, "release.yml", "pnpm tauri signer sign");
+    // The publish job runs after every matrix build, rebuilds latest.json
+    // from the downloaded draft assets, verifies it, then publishes.
+    must_have(&w, "release.yml", "needs: release");
+    must_have(&w, "release.yml", "gh release download \"$GITHUB_REF_NAME\"");
+    must_have(&w, "release.yml", "scripts/latest-json.sh generate");
+    must_have(&w, "release.yml", "scripts/latest-json.sh verify");
+    must_have(&w, "release.yml", "gh release upload \"$GITHUB_REF_NAME\" latest.json");
+    must_have(&w, "release.yml", "gh release edit \"$GITHUB_REF_NAME\" --draft=false");
+    must_have(&w, "release.yml", "gh release edit \"$GITHUB_REF_NAME\" --latest");
+    // A tag may only build when all three version files agree with it.
+    must_have(&w, "release.yml", "cargo metadata --manifest-path src-tauri/Cargo.toml");
+    must_have(&w, "release.yml", "src-tauri/Cargo.toml ($cargo)");
+}
+
+#[test]
+fn updater_is_signed_rust_only_and_version_bound() {
+    let conf = rd("src-tauri/tauri.conf.json");
+    must_have(&conf, "tauri.conf.json", "\"createUpdaterArtifacts\": true");
+    must_have(&conf, "tauri.conf.json", "\"requireSignedVersion\": true");
+    must_have(
+        &conf,
+        "tauri.conf.json",
+        "https://github.com/ByteNinjas/DevSetup/releases/latest/download/latest.json",
+    );
+    must_have(
+        &conf,
+        "tauri.conf.json",
+        "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE0NUNGNzNBNzAzRjVGNzcKUldSM1h6OXdPdmRjcEJtc21Remc0aStRekxCdGhrR0FNY1FkdGtDbWtaZ0lyUWJHRklRT05WWDIK",
+    );
+    // Rust owns the updater: no JS plugin package and no updater capability.
+    let cargo = rd("src-tauri/Cargo.toml");
+    must_have(&cargo, "Cargo.toml", "tauri-plugin-updater");
+    let pkg = rd("package.json");
+    must_not_have(&pkg, "package.json", "@tauri-apps/plugin-updater");
+    let caps = rd("src-tauri/capabilities/default.json");
+    must_not_have(&caps, "capabilities/default.json", "updater:");
+    let lib = rd("src-tauri/src/lib.rs");
+    must_have(&lib, "lib.rs", "tauri_plugin_updater::Builder::new().build()");
+    // A restored pending update is re-bound to the checked version.
+    let update = rd("src-tauri/src/app_update.rs");
+    must_have(&update, "app_update.rs", "restore_update");
+    must_have(&update, "app_update.rs", "update.version != pending.version");
+    must_have(&update, "app_update.rs", "exec::RUNNING");
+}
+
+#[test]
+fn latest_json_covers_every_supported_updater_target() {
+    let s = rd("scripts/latest-json.sh");
+    for target in [
+        "linux-x86_64-appimage",
+        "linux-aarch64-appimage",
+        "linux-x86_64-deb",
+        "linux-aarch64-deb",
+        "windows-x86_64-nsis",
+        "darwin-aarch64-app",
+        "darwin-x86_64-app",
+    ] {
+        must_have(&s, "scripts/latest-json.sh", target);
+    }
+    for asset in [
+        "DevSetup_@V@_amd64.AppImage",
+        "DevSetup_@V@_aarch64.AppImage",
+        "DevSetup_@V@_amd64.deb",
+        "DevSetup_@V@_arm64.deb",
+        "DevSetup_@V@_x64-setup.exe",
+        "DevSetup_@V@_aarch64.app.tar.gz",
+        "DevSetup_@V@_x64.app.tar.gz",
+    ] {
+        must_have(&s, "scripts/latest-json.sh", asset);
+    }
+    // The manifest is generated from the release assets and checked before
+    // upload, not trusted because the build succeeded.
+    must_have(&s, "scripts/latest-json.sh", "verify_manifest");
+    must_have(&s, "scripts/latest-json.sh", "signature does not match");
+}
+
+#[cfg(unix)]
+#[test]
+fn latest_json_script_round_trips_and_rejects_tampering() {
+    use std::process::Command;
+
+    let dir = std::env::temp_dir().join(format!(
+        "devsetup-latest-json-{}-{}",
+        std::process::id(),
+        chronoless()
+    ));
+    let assets = dir.join("assets");
+    fs::create_dir_all(&assets).unwrap();
+    let version = "0.0.3";
+    let names: Vec<String> = [
+        "amd64.AppImage",
+        "aarch64.AppImage",
+        "amd64.deb",
+        "arm64.deb",
+        "x64-setup.exe",
+        "aarch64.app.tar.gz",
+        "x64.app.tar.gz",
+    ]
+    .iter()
+    .map(|suffix| format!("DevSetup_{version}_{suffix}"))
+    .collect();
+    for (i, name) in names.iter().enumerate() {
+        fs::write(assets.join(name), format!("asset-{i}\n")).unwrap();
+        fs::write(assets.join(format!("{name}.sig")), "c2lnbmF0dXJlLTA=\n").unwrap();
+    }
+
+    let script = root().join("scripts/latest-json.sh");
+    let generate = |assets_dir: &Path| {
+        Command::new("bash")
+            .arg(&script)
+            .arg("generate")
+            .arg(assets_dir)
+            .args([
+                "--version",
+                version,
+                "--tag",
+                "v0.0.3",
+                "--repo",
+                "ByteNinjas/DevSetup",
+                "--date",
+                "2026-01-01T00:00:00Z",
+            ])
+            .output()
+            .unwrap()
+    };
+    let out = generate(&assets);
+    assert!(
+        out.status.success(),
+        "generate failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let manifest = dir.join("latest.json");
+    fs::write(&manifest, &out.stdout).unwrap();
+
+    let verify = Command::new("bash")
+        .arg(&script)
+        .arg("verify")
+        .arg(&assets)
+        .arg(&manifest)
+        .args(["--repo", "ByteNinjas/DevSetup", "--tag", "v0.0.3"])
+        .output()
+        .unwrap();
+    assert!(
+        verify.status.success(),
+        "verify failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&verify.stdout),
+        String::from_utf8_lossy(&verify.stderr)
+    );
+
+    // A changed signature must fail verification.
+    fs::write(assets.join(format!("{}.sig", names[2])), "dGFtcGVyZWQ=\n").unwrap();
+    let tampered = Command::new("bash")
+        .arg(&script)
+        .arg("verify")
+        .arg(&assets)
+        .arg(&manifest)
+        .args(["--repo", "ByteNinjas/DevSetup", "--tag", "v0.0.3"])
+        .output()
+        .unwrap();
+    assert!(
+        !tampered.status.success(),
+        "a tampered signature must be rejected"
+    );
+    assert!(
+        String::from_utf8_lossy(&tampered.stderr).contains("signature does not match"),
+        "stderr: {}",
+        String::from_utf8_lossy(&tampered.stderr)
+    );
+
+    // A missing platform asset must stop generation.
+    fs::remove_file(assets.join(names[0].as_str())).unwrap();
+    let missing = generate(&assets);
+    assert!(
+        !missing.status.success(),
+        "a missing asset must stop generation"
+    );
+    assert!(
+        String::from_utf8_lossy(&missing.stderr).contains("missing or empty asset"),
+        "stderr: {}",
+        String::from_utf8_lossy(&missing.stderr)
+    );
+
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn ci_compiles_the_preview_targets_before_a_release() {
     let w = rd(".github/workflows/ci.yml");
     must_have(&w, "ci.yml", "pnpm run check");
     must_have(&w, "ci.yml", "windows-latest");
     must_have(&w, "ci.yml", "macos-15");
     must_have(&w, "ci.yml", "macos-15-intel");
-    must_have(&w, "ci.yml", "cargo check --manifest-path src-tauri/Cargo.toml");
+    must_have(&w, "ci.yml", "cargo check --all-targets --manifest-path src-tauri/Cargo.toml");
     must_have(&w, "ci.yml", "contents: read");
 }
 

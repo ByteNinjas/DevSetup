@@ -96,7 +96,7 @@ Legend: ✅ available · 🚧 partly done · 🗓 planned. Full detail lives in 
 | | Feature | What it does |
 |---|---|---|
 | ✅ | **Cleaner** | Finds unused apt packages, apt download cache, unused Flatpak runtimes, Docker leftovers and the npm, pip, mise and Cargo caches — with the space each frees shown first. |
-| ✅ | **Updates** | Updates system packages, Flatpak, mise tools, global npm packages, pipx apps and script-installed tools, with counts and package names shown before you commit. |
+| ✅ | **Tool updates** | Updates system packages, Flatpak, mise tools, global npm packages, pipx apps and script-installed tools, with counts and package names shown before you commit. |
 | ✅ | **Doctor** | Checks that installed commands run, terminal `PATH`, Docker service and group, Git identity, Flathub, the apt database, disk space and pending restarts, with one-click fixes or copyable lines. |
 
 ### Configure and extend
@@ -117,6 +117,7 @@ Legend: ✅ available · 🚧 partly done · 🗓 planned. Full detail lives in 
 | ✅ | **Stacks** | Starts disposable Docker services for one project: Redis, PostgreSQL, MySQL, MongoDB, RabbitMQ, MinIO and Mailpit, plus ready-made combos. |
 | ✅ | **Local-only by design** | Every published port is bound to `127.0.0.1`; each stack gets a random password in a private file (`0600` on Unix, the user profile's ACL on Windows). |
 | ✅ | **Packages** | Tag-driven releases: `.deb` (recommended) and AppImage for Linux x64/arm64, NSIS `.exe` for Windows x64, and `.dmg` for macOS arm64/x64. Windows and macOS are previews. |
+| ✅ | **Self-update** | Packaged builds check for a newer signed release on startup and from the app update card, verify it against the committed key, then install it and restart. Linux AppImage and `.deb`, Windows NSIS and macOS `.app` are supported. |
 | 🗓 | **Later** | `devsetup apply devsetup.yaml`, Fedora/Arch support, full Windows/macOS parity, signed remote manifest updates, version pickers and sudo installers. |
 
 ## Install
@@ -140,10 +141,12 @@ Download the asset for your platform from the [latest release](https://github.co
 sudo apt install ./DevSetup_<version>_amd64.deb
 ```
 
+> **Self-update starts with v0.0.3.** Packaged builds check for a signed update on startup and from the app's update card, then install it and restart. v0.0.2 has no updater, so install v0.0.3 manually once; later releases update in place. On Linux the `.deb` update asks for the administrator password through `pkexec`, while the AppImage replaces itself.
+
 > **Why the `.deb` is recommended:** it installs the polkit policy, so the password prompt names DevSetup. An AppImage cannot start the root helper through `pkexec`, so apt-based steps are unavailable there.
 
 > [!NOTE]
-> **Windows and macOS are previews.** They compile and run, and the UI, setup files, Git and VS Code helpers work. Installs, cleanup, updates, Doctor, drivers and shell login changes are Linux-only and stay disabled. The Windows `.exe` is unsigned, so SmartScreen may warn. The macOS `.dmg` is unsigned, so Gatekeeper may block the first launch — right-click the app and choose **Open**, or allow it in System Settings.
+> **Windows and macOS are previews.** They compile and run, and the UI, setup files, Git and VS Code helpers work. Installs, cleanup, tool updates, Doctor, drivers and shell login changes are Linux-only and stay disabled. The Windows `.exe` is unsigned, so SmartScreen may warn. The macOS `.dmg` is unsigned, so Gatekeeper may block the first launch — right-click the app and choose **Open**, or allow it in System Settings.
 
 ### From source (Debian/Ubuntu)
 
@@ -161,6 +164,14 @@ pnpm tauri dev
 ```
 
 Build the packages with `pnpm tauri build`. The bundles land in `src-tauri/target/release/bundle/`: `.deb` and AppImage on Linux, NSIS `.exe` on Windows, and `.dmg` on macOS. Windows and macOS need their normal [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) instead of the Debian packages above.
+
+`pnpm tauri build` also signs updater artifacts, so it needs the release signing key. A local build without that key must disable them:
+
+```bash
+pnpm tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'
+```
+
+The plain bundles are the same; only the updater artifacts are omitted. Release builds always sign with the key from GitHub secrets.
 
 App icons live in `src-tauri/icons/` and are generated from `docs/app-icon.png` (itself exported from `docs/logo.svg`). To change the logo, edit the SVG, export a 1024 px PNG over `docs/app-icon.png`, then run `pnpm run icons`. The README hero is `docs/banner.svg`, exported to `docs/banner.png`.
 
@@ -346,15 +357,16 @@ pnpm tauri build                 # build the current platform's bundles
 | `cargo test --manifest-path src-tauri/Cargo.toml` | Rust tests only. |
 | `pnpm run icons` | Regenerate app icons from `docs/app-icon.png`. |
 | `pnpm run pin` / `pnpm run pin:check` | Refresh or verify install-script SHA-256 pins. |
+| `pnpm tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'` | Build bundles locally without the release signing key. |
 | `scripts/deps.sh` | Full local audit: `cargo audit`, `pnpm audit --prod`, OSV over both lockfiles, pin check. |
 
-**Repository layout:** `manifest/tools.yaml` holds roles and tools; `manifest/extensions.yaml` holds VS Code packs; `manifest/stacks.yaml` holds Docker stack services. Rust lives in `src-tauri/src/` (`manifest`, `plan`, `preflight`, `exec`, `helper`, `state`, `setup`, `scan`, `clean`, `update`, `doctor`, `gitwiz`, `shellcfg`, `vscode`, `drivers`, `stacks`). `src/api.ts` is the only frontend file that talks to Tauri.
+**Repository layout:** `manifest/tools.yaml` holds roles and tools; `manifest/extensions.yaml` holds VS Code packs; `manifest/stacks.yaml` holds Docker stack services. Rust lives in `src-tauri/src/` (`manifest`, `plan`, `preflight`, `exec`, `helper`, `state`, `setup`, `scan`, `clean`, `update`, `app_update`, `doctor`, `gitwiz`, `shellcfg`, `vscode`, `drivers`, `stacks`). `src/api.ts` is the only frontend file that talks to Tauri.
 
 Enable the hooks once per clone with `git config core.hooksPath .githooks`. Task branches are cut from `dev` and pull requests target `dev`; process, branch and review rules live in [`CONVENTIONS.md`](CONVENTIONS.md). Agent harnesses auto-load [`AGENTS.md`](AGENTS.md).
 
 ## Roadmap
 
-**Available now:** role wizard, reviewed installs, clean removal, setup files, machine scan, Cleaner, Updates, Doctor, Git/GitHub wizard, shell setup, VS Code packs, Drivers diagnostics and Docker Stacks.
+**Available now:** role wizard, reviewed installs, clean removal, setup files, machine scan, Cleaner, tool updates, signed app self-update, Doctor, Git/GitHub wizard, shell setup, VS Code packs, Drivers diagnostics and Docker Stacks.
 
 **Next:** end-to-end install testing on clean machines, Kafka and Elasticsearch stacks, volume backup/restore and idle-stack reminders, the remaining system tweaks, and `devsetup apply devsetup.yaml`.
 

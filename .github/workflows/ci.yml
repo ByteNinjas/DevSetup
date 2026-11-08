@@ -107,5 +107,5 @@ jobs:
       - name: Build the frontend
         run: pnpm run build
 
-      - name: Compile the app
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+      - name: Compile the app and its tests
+        run: cargo check --all-targets --manifest-path src-tauri/Cargo.toml
