@@ -121,7 +121,7 @@ jobs:
           releaseBody: |
             DevSetup ${{ github.ref_name }}.
 
-            **Updates**
+            **App updates**
             - Builds from v0.0.3 onward check for a signed update on startup and from the
               Updates card, then download, verify and install it in place.
             - Releases before v0.0.3 have no updater and must install this release manually once.
