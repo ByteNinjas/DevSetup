@@ -171,7 +171,7 @@ Build the packages with `pnpm tauri build`. The bundles land in `src-tauri/targe
 pnpm tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'
 ```
 
-The plain bundles are the same; only the updater signatures are omitted. Release builds always sign with the key from GitHub secrets.
+The plain bundles are the same; only the updater artifacts are omitted. Release builds always sign with the key from GitHub secrets.
 
 App icons live in `src-tauri/icons/` and are generated from `docs/app-icon.png` (itself exported from `docs/logo.svg`). To change the logo, edit the SVG, export a 1024 px PNG over `docs/app-icon.png`, then run `pnpm run icons`. The README hero is `docs/banner.svg`, exported to `docs/banner.png`.
 
